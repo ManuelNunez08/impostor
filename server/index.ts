@@ -32,6 +32,7 @@ let waitingLobby: { game: GameEngine; gameId: string } | null = null;
 // Countdown timers
 const countdownTimers = new Map<string, NodeJS.Timeout>();
 const interrogationTimers = new Map<string, NodeJS.Timeout>();
+const topicGuessTimers = new Map<string, NodeJS.Timeout>();
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -337,6 +338,11 @@ io.on('connection', (socket) => {
         
         // Log the voting result
         console.log(`Voting complete in ${gameId}. Winner: ${result.winner || 'none'}, Phase: ${game.getPhase()}`);
+        
+        // Start topic guess timer if entering topic-guess phase
+        if (game.getPhase() === 'topic-guess') {
+          startTopicGuessTimer(gameId);
+        }
       }
 
       broadcastGameState(gameId);
@@ -386,11 +392,31 @@ io.on('connection', (socket) => {
     }
 
     try {
+      cancelTopicGuessTimer(gameId); // Cancel timer when guess is submitted
       const isCorrect = game.guessTopicAsImpostor(guess);
+      io.to(gameId).emit('game:phase-change', game.getPhase());
       broadcastGameState(gameId);
       callback({ success: true, isCorrect });
     } catch (error) {
       callback({ success: false, error: String(error) });
+    }
+  });
+
+  socket.on('game:continue-to-next-round', () => {
+    const gameId = playerToGame.get(socket.id);
+    if (!gameId) return;
+
+    const game = games.get(gameId);
+    if (!game) return;
+
+    try {
+      game.transitionToNextRound();
+      console.log(`Transitioning to next round in ${gameId}`);
+      io.to(gameId).emit('game:phase-change', game.getPhase());
+      startInterrogationTimer(gameId); // Start timer for new round
+      broadcastGameState(gameId);
+    } catch (error) {
+      console.error('Error transitioning to next round:', error);
     }
   });
 
@@ -493,7 +519,7 @@ function getPlayerView(game: GameEngine, playerId: PlayerId) {
     canVote: game.canPlayerVote(playerId).can,
     eliminatedPlayers: state.eliminatedPlayers,
     winner: state.winner,
-    timeRemaining: game.getInterrogationTimeRemaining(),
+    timeRemaining: game.getInterrogationTimeRemaining() || game.getTopicGuessTimeRemaining(),
     lobbyCountdown: game.getLobbyCountdownRemaining(),
     config: state.settings, // Legacy field now points to settings
     settings: state.settings,
@@ -597,6 +623,52 @@ function cancelInterrogationTimer(gameId: string) {
     clearInterval(interrogationTimers.get(gameId)!);
     interrogationTimers.delete(gameId);
     console.log(`Cancelled interrogation timer for ${gameId}`);
+  }
+}
+
+function startTopicGuessTimer(gameId: string) {
+  // Clear existing timer if any
+  if (topicGuessTimers.has(gameId)) {
+    clearInterval(topicGuessTimers.get(gameId)!);
+  }
+
+  const timer = setInterval(() => {
+    const game = games.get(gameId);
+    if (!game) {
+      clearInterval(timer);
+      topicGuessTimers.delete(gameId);
+      return;
+    }
+
+    const remaining = game.getTopicGuessTimeRemaining();
+    
+    if (remaining === null || remaining <= 0) {
+      // Time expired - impostor loses by default (submit empty guess)
+      clearInterval(timer);
+      topicGuessTimers.delete(gameId);
+      
+      try {
+        game.guessTopicAsImpostor(''); // Wrong guess
+        console.log(`Topic guess time expired for ${gameId}, impostor loses`);
+        io.to(gameId).emit('game:phase-change', game.getPhase());
+        broadcastGameState(gameId);
+      } catch (error) {
+        console.error('Error handling topic guess timeout:', error);
+      }
+    } else {
+      // Broadcast updated time remaining
+      broadcastGameState(gameId);
+    }
+  }, 1000); // Update every second
+
+  topicGuessTimers.set(gameId, timer);
+}
+
+function cancelTopicGuessTimer(gameId: string) {
+  if (topicGuessTimers.has(gameId)) {
+    clearInterval(topicGuessTimers.get(gameId)!);
+    topicGuessTimers.delete(gameId);
+    console.log(`Cancelled topic guess timer for ${gameId}`);
   }
 }
 

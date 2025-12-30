@@ -144,6 +144,8 @@ export interface GameState {
   startedAt: number | null;
   interrogationStartedAt: number | null;  // When current interrogation phase started
   interrogationEndsAt: number | null;     // When current interrogation phase should end
+  topicGuessStartedAt: number | null;     // When topic guess phase started
+  topicGuessEndsAt: number | null;        // When topic guess phase should end
   endedAt: number | null;
   currentPhaseStartedAt: number;
   lobbyCountdownStarted: number | null;
@@ -189,6 +191,13 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
 };
 
 // NEW: Default flexible game settings (matches image specifications)
+// ============= Timer Constants =============
+
+export const TOPIC_GUESS_TIME = 15;    // seconds
+export const RESULTS_DISPLAY_TIME = 5; // seconds
+
+// ============= Default Settings =============
+
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
   minPlayers: 4,
   maxPlayers: 6,

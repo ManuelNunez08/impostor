@@ -13,6 +13,8 @@ import ReadyToVoteBox from '@/components/game/ReadyToVoteBox';
 import VotingTable from '@/components/game/VotingTable';
 import CurrentVotes from '@/components/game/CurrentVotes';
 import VotingChat from '@/components/game/VotingChat';
+import ResultsPhase from '@/components/game/ResultsPhase';
+import TopicGuessPhase from '@/components/game/TopicGuessPhase';
 
 export default function GamePage() {
   const params = useParams();
@@ -38,6 +40,9 @@ export default function GamePage() {
     message: string;
     timestamp: number;
   }>>([]);
+  
+  // Results state
+  const [resultsTimer, setResultsTimer] = useState(5);
 
   useEffect(() => {
     const socket = getSocket();
@@ -164,6 +169,33 @@ export default function GamePage() {
 
     return () => clearInterval(timer);
   }, [gameState?.phase, votingTimer]);
+
+  // Reset results timer when entering results phase
+  useEffect(() => {
+    if (gameState && gameState.phase === 'results') {
+      setResultsTimer(5);
+    }
+  }, [gameState?.phase]);
+
+  // Results phase auto-progression
+  useEffect(() => {
+    if (!gameState || gameState.phase !== 'results') return;
+    if (gameState.winner !== null) return; // Don't auto-progress if game over
+
+    const timer = setInterval(() => {
+      setResultsTimer(prev => {
+        if (prev <= 1) {
+          // Trigger transition to next round
+          const socket = getSocket();
+          socket.emit('game:continue-to-next-round');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [gameState?.phase, gameState?.winner, resultsTimer]);
 
   const handleAskPlayer = (targetPlayerId: string) => {
     setAskingPlayerId(targetPlayerId);
@@ -299,6 +331,15 @@ export default function GamePage() {
     console.log('Voting complete!');
     // Results will be processed by the server
     // Server will trigger phase change and update game state
+  };
+
+  const handleTopicGuess = (topic: string) => {
+    const socket = getSocket();
+    socket.emit('game:guess-topic', topic, (response) => {
+      if (!response.success) {
+        setError(response.error || 'Failed to submit guess');
+      }
+    });
   };
 
   if (!isConnected) {
@@ -562,6 +603,19 @@ export default function GamePage() {
           onAnswer={handleAnswerQuestion}
           onPass={handlePassQuestion}
           timeLimit={gameState.settings?.answerTimeLimit || 30}
+        />
+      )}
+
+      {/* Results Phase */}
+      {gameState.phase === 'results' && (
+        <ResultsPhase gameState={gameState} />
+      )}
+
+      {/* Topic Guess Phase */}
+      {gameState.phase === 'topic-guess' && (
+        <TopicGuessPhase 
+          gameState={gameState}
+          onGuess={handleTopicGuess}
         />
       )}
 

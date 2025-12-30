@@ -16,7 +16,8 @@ import {
   Category,
   WinnerSide,
   GameSettings,
-  RoundConfig
+  RoundConfig,
+  TOPIC_GUESS_TIME
 } from '../../types/game.js';
 import { generateId } from '../utils/id.js';
 import { validateQuestion } from './validation.js';
@@ -58,6 +59,8 @@ export class GameEngine {
       lobbyCountdownStarted: null,
       interrogationStartedAt: null,
       interrogationEndsAt: null,
+      topicGuessStartedAt: null,
+      topicGuessEndsAt: null,
       config: legacyConfig,        // Legacy config
       settings: gameSettings,      // NEW: Flexible settings
     };
@@ -150,6 +153,15 @@ export class GameEngine {
     }
     
     const remaining = Math.max(0, this.state.interrogationEndsAt - Date.now());
+    return Math.ceil(remaining / 1000); // Return seconds
+  }
+
+  getTopicGuessTimeRemaining(): number | null {
+    if (!this.state.topicGuessEndsAt || this.state.phase !== 'topic-guess') {
+      return null;
+    }
+    
+    const remaining = Math.max(0, this.state.topicGuessEndsAt - Date.now());
     return Math.ceil(remaining / 1000); // Return seconds
   }
 
@@ -443,6 +455,10 @@ export class GameEngine {
       if (roundConfig.impostorCanGuess) {
         // Give impostor a chance to guess topic
         this.state.phase = 'topic-guess';
+        // Start topic guess timer
+        const topicGuessDuration = TOPIC_GUESS_TIME * 1000;
+        this.state.topicGuessStartedAt = Date.now();
+        this.state.topicGuessEndsAt = Date.now() + topicGuessDuration;
       } else {
         // Impostor loses immediately
         this.endGame('players', 'Impostor identified and eliminated');

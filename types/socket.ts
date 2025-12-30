@@ -58,6 +58,7 @@ export interface ClientToServerEvents {
   'game:vote': (targetPlayerId: PlayerId, callback: (response: ActionResponse) => void) => void;
   'game:voting-chat': (message: string) => void;
   'game:guess-topic': (guess: string, callback: (response: GuessResponse) => void) => void;
+  'game:continue-to-next-round': () => void;
 
   // Utility
   'game:get-state': (callback: (state: PlayerView) => void) => void;
