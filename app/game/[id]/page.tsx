@@ -474,11 +474,11 @@ export default function GamePage() {
               <div 
                 className="absolute"
                 style={{ 
-                  top: '30%', 
+                  top: '-30%', 
                   left: '35%', 
                   transform: 'translate(-50%, -50%)',
-                  width: '260px',
-                  height: '200px',
+                  width: '300px',
+                  height: '230px',
                   pointerEvents: 'none'
                 }}
               >
