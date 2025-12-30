@@ -117,6 +117,10 @@ export default function GamePage() {
       }
     });
 
+    socket.on('game:voting-chat', (message) => {
+      setChatMessages(prev => [...prev, message]);
+    });
+
     return () => {
       socket.off('connect');
       socket.off('disconnect');
@@ -124,6 +128,7 @@ export default function GamePage() {
       socket.off('game:phase-change');
       socket.off('game:ended');
       socket.off('error');
+      socket.off('game:voting-chat');
     };
   }, [gameId, router]);
 
@@ -258,20 +263,11 @@ export default function GamePage() {
   };
 
   const handleSendChatMessage = (message: string) => {
-    const currentPlayer = gameState?.players.find(p => p.id === gameState.playerId);
-    if (!currentPlayer) return;
-
-    const newMessage = {
-      id: `${Date.now()}-${gameState!.playerId}`,
-      playerId: gameState!.playerId,
-      playerName: currentPlayer.name,
-      message,
-      timestamp: Date.now()
-    };
-
-    setChatMessages(prev => [...prev, newMessage]);
+    const socket = getSocket();
+    if (!gameState) return;
     
-    // TODO: Emit to server when socket events are set up
+    // Emit to server - server will broadcast to all players
+    socket.emit('game:voting-chat', message);
     // socket.emit('voting:chat', message);
   };
 
@@ -464,7 +460,7 @@ export default function GamePage() {
         ) : (
           // Voting Phase
           <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2">
+            <div className="col-span-2 relative">
               <VotingTable
                 players={gameState.players}
                 currentPlayerId={gameState.playerId}
@@ -474,6 +470,46 @@ export default function GamePage() {
                 onLockVote={handleLockVote}
                 onChangeVote={handleChangeVote}
               />
+              {/* Question History inside voting table */}
+              <div 
+                className="absolute"
+                style={{ 
+                  top: '30%', 
+                  left: '35%', 
+                  transform: 'translate(-50%, -50%)',
+                  width: '260px',
+                  height: '200px',
+                  pointerEvents: 'none'
+                }}
+              >
+                <div className="bg-white/95 rounded-lg shadow-lg p-3 h-full overflow-y-auto pointer-events-auto">
+                  <h4 className="text-xs font-bold text-gray-700 mb-2 text-center">Question History</h4>
+                  <div className="space-y-2">
+                    {gameState.questions.length === 0 ? (
+                      <p className="text-[10px] text-gray-400 text-center">No questions asked</p>
+                    ) : (
+                      gameState.questions.map((q) => {
+                        const fromPlayer = gameState.players.find(p => p.id === q.fromPlayerId);
+                        const toPlayer = gameState.players.find(p => p.id === q.toPlayerId);
+                        return (
+                          <div key={q.id} className="text-[10px] border-b border-gray-200 pb-1">
+                            <div className="text-gray-600">
+                              <span className="font-semibold">{fromPlayer?.name}</span> → <span className="font-semibold">{toPlayer?.name}</span>
+                            </div>
+                            <div className="text-gray-800 font-medium">Q: {q.question}</div>
+                            {q.status === 'answered' && (
+                              <div className="text-green-600">A: {q.answer}</div>
+                            )}
+                            {q.status === 'passed' && (
+                              <div className="text-red-500">A: Passed</div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
             <div>
               <VotingChat

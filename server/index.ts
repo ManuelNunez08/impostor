@@ -344,6 +344,30 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('game:voting-chat', (message) => {
+    const gameId = playerToGame.get(socket.id);
+    const playerId = playerIdMap.get(socket.id);
+
+    if (!gameId || !playerId) return;
+
+    const game = games.get(gameId);
+    if (!game) return;
+
+    const player = game.getPlayer(playerId);
+    if (!player) return;
+
+    // Broadcast chat message to all players in the game
+    const chatMessage = {
+      id: `${Date.now()}-${playerId}`,
+      playerId,
+      playerName: player.name,
+      message,
+      timestamp: Date.now()
+    };
+
+    io.to(gameId).emit('game:voting-chat', chatMessage);
+  });
+
   socket.on('game:guess-topic', (guess, callback) => {
     const gameId = playerToGame.get(socket.id);
     const playerId = playerIdMap.get(socket.id);

@@ -57,8 +57,8 @@ export default function VotingTable({
     <div className="relative w-full h-[700px]">
       {/* Center table area - smaller for voting */}
       <div 
-        className="absolute w-[350px] h-[280px] bg-gradient-to-br from-blue-900 to-blue-700 rounded-[50%] shadow-2xl border-8 border-blue-800"
-        style={{ top: '45%', left: '35%', transform: 'translate(-50%, -50%)' }}
+        className="absolute w-[280px] h-[224px] bg-gradient-to-br from-blue-900 to-blue-700 rounded-[50%] shadow-2xl border-8 border-blue-800"
+        style={{ top: '30%', left: '35%', transform: 'translate(-50%, -50%)' }}
       >
       </div>
 
@@ -67,11 +67,11 @@ export default function VotingTable({
         const angleInDegrees = angles[index];
         const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
         
-        const radiusX = 32;
-        const radiusY = 34;
+        const radiusX = 26;
+        const radiusY = 28;
         
         const centerX = 35;
-        const centerY = 45;
+        const centerY = 30;
         
         const xPercent = centerX + radiusX * Math.cos(angleInRadians);
         const yPercent = centerY + radiusY * Math.sin(angleInRadians);

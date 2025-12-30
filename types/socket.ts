@@ -26,6 +26,7 @@ export interface ServerToClientEvents {
   // Voting events
   'game:vote-cast': (fromPlayerId: PlayerId) => void;
   'game:voting-complete': () => void;
+  'game:voting-chat': (message: { id: string; playerId: PlayerId; playerName: string; message: string; timestamp: number }) => void;
 
   // Timer events
   'game:timer-update': (timeRemaining: number) => void;
@@ -55,6 +56,7 @@ export interface ClientToServerEvents {
   'game:pass-question': (questionId: QuestionId, callback: (response: ActionResponse) => void) => void;
   'game:ready-to-vote': (callback: (response: ActionResponse) => void) => void;
   'game:vote': (targetPlayerId: PlayerId, callback: (response: ActionResponse) => void) => void;
+  'game:voting-chat': (message: string) => void;
   'game:guess-topic': (guess: string, callback: (response: GuessResponse) => void) => void;
 
   // Utility
