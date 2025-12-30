@@ -198,6 +198,11 @@ export default function GamePage() {
   }, [gameState?.phase, gameState?.winner, resultsTimer]);
 
   const handleAskPlayer = (targetPlayerId: string) => {
+    // Prevent eliminated players from asking questions
+    if (currentPlayer?.isEliminated) {
+      setError('You cannot ask questions - you have been eliminated');
+      return;
+    }
     setAskingPlayerId(targetPlayerId);
     setError('');
   };
@@ -270,12 +275,23 @@ export default function GamePage() {
 
   // Voting handlers
   const handleVote = (targetPlayerId: string) => {
+    // Prevent eliminated players from voting
+    if (currentPlayer?.isEliminated) {
+      setError('You cannot vote - you have been eliminated');
+      return;
+    }
     setSelectedVote(targetPlayerId);
     setIsVoteLocked(false);
   };
 
   const handleLockVote = () => {
     if (!selectedVote || !gameState) return;
+    
+    // Prevent eliminated players from locking votes
+    if (currentPlayer?.isEliminated) {
+      setError('You cannot vote - you have been eliminated');
+      return;
+    }
 
     setIsVoteLocked(true);
 
@@ -380,8 +396,10 @@ export default function GamePage() {
   const maxQuestions = gameState.settings?.rounds[gameState.currentRoundIndex]?.maxQuestionsPerPlayer || 2;
 
   // Use generic phase names (new flexible system)
-  const canAsk = gameState.phase === 'interrogation';
+  // Only allow actions if current player is not eliminated
+  const canAsk = gameState.phase === 'interrogation' && !currentPlayer?.isEliminated;
   const isVotingPhase = gameState.phase === 'voting';
+  const canVote = isVotingPhase && !currentPlayer?.isEliminated;
 
   // Compute votes for display: show ALL players (with placeholders for those who haven't voted)
   const displayVotes = (() => {
@@ -504,6 +522,16 @@ export default function GamePage() {
         {!isVotingPhase ? (
           // Question/Answer Phase
           <div className="relative">
+            {/* Show spectator message for eliminated players */}
+            {currentPlayer?.isEliminated && (
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-gray-800/90 text-white px-6 py-3 rounded-lg shadow-xl">
+                <div className="text-center">
+                  <div className="text-2xl mb-1">💀</div>
+                  <div className="font-bold">Spectating</div>
+                  <div className="text-sm text-gray-300">You have been eliminated</div>
+                </div>
+              </div>
+            )}
             {/* Circular Table with Players */}
             <CircularTable
               players={gameState.players}
@@ -522,6 +550,16 @@ export default function GamePage() {
           // Voting Phase
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2 relative">
+              {/* Show spectator message for eliminated players */}
+              {currentPlayer?.isEliminated && (
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-gray-800/90 text-white px-6 py-3 rounded-lg shadow-xl">
+                  <div className="text-center">
+                    <div className="text-2xl mb-1">💀</div>
+                    <div className="font-bold">Spectating</div>
+                    <div className="text-sm text-gray-300">You have been eliminated</div>
+                  </div>
+                </div>
+              )}
               <VotingTable
                 players={gameState.players}
                 currentPlayerId={gameState.playerId}

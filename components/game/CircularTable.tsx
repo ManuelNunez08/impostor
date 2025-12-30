@@ -85,8 +85,8 @@ export default function CircularTable({ players, currentPlayerId, onAskPlayer, c
                             transform: 'translate(-50%, -50%)',
                         }}
                     >
-                        {/* Ask button */}
-                        {!isCurrentPlayer && canAsk && (
+                        {/* Ask button - only show for non-eliminated players */}
+                        {!isCurrentPlayer && canAsk && !player.isEliminated && (
                             <button
                                 onClick={() => onAskPlayer(player.id)}
                                 className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-700 hover:bg-gray-600 text-white text-sm px-3 py-1 rounded shadow-lg transition-colors"
@@ -97,20 +97,29 @@ export default function CircularTable({ players, currentPlayerId, onAskPlayer, c
 
                         {/* Player avatar */}
                         <div
-                            className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl shadow-xl ${isCurrentPlayer ? 'ring-4 ring-purple-500' : ''
-                                } ${player.isEliminated ? 'opacity-50 grayscale' : ''}`}
-                            style={{ backgroundColor: color }}
+                            className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl shadow-xl ${
+                                isCurrentPlayer ? 'ring-4 ring-purple-500' : ''
+                            } ${
+                                player.isEliminated ? 'opacity-30 grayscale blur-[1px]' : ''
+                            }`}
+                            style={{ 
+                                backgroundColor: player.isEliminated ? '#6B7280' : color 
+                            }}
                         >
-                            😊
+                            {player.isEliminated ? '💀' : '😊'}
                         </div>
 
                         {/* Player name */}
                         <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                            <div className="bg-white px-3 py-1 rounded-full shadow-lg text-sm font-semibold text-gray-800">
+                            <div className={`px-3 py-1 rounded-full shadow-lg text-sm font-semibold ${
+                                player.isEliminated ? 'bg-gray-400 text-gray-700' : 'bg-white text-gray-800'
+                            }`}>
                                 {player.name}
                             </div>
-                            <div className="text-xs text-center mt-1 text-gray-600">
-                                {player.isReady ? 'Ready' : player.isEliminated ? 'Eliminated' : 'Not Ready'}
+                            <div className={`text-xs text-center mt-1 ${
+                                player.isEliminated ? 'text-gray-500 font-bold' : 'text-gray-600'
+                            }`}>
+                                {player.isEliminated ? '💀 Eliminated' : (player.isReady ? 'Ready' : 'Not Ready')}
                             </div>
                         </div>
                     </div>

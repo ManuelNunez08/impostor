@@ -139,19 +139,30 @@ export default function VotingTable({
             <div
               className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl shadow-xl ${
                 isCurrentPlayer ? 'ring-4 ring-purple-500' : ''
-              } ${player.isEliminated ? 'opacity-50 grayscale' : ''} ${
+              } ${
+                player.isEliminated ? 'opacity-30 grayscale blur-[1px]' : ''
+              } ${
                 isSelected ? 'ring-4 ring-red-500' : ''
               }`}
-              style={{ backgroundColor: color }}
+              style={{ 
+                backgroundColor: player.isEliminated ? '#6B7280' : color 
+              }}
             >
-              😊
+              {player.isEliminated ? '💀' : '😊'}
             </div>
 
             {/* Player name */}
             <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-              <div className="bg-white px-3 py-1 rounded-full shadow-lg text-sm font-semibold text-gray-800">
+              <div className={`px-3 py-1 rounded-full shadow-lg text-sm font-semibold ${
+                player.isEliminated ? 'bg-gray-400 text-gray-700' : 'bg-white text-gray-800'
+              }`}>
                 {player.name}
               </div>
+              {player.isEliminated && (
+                <div className="text-xs text-center mt-1 text-gray-500 font-bold">
+                  💀 Eliminated
+                </div>
+              )}
             </div>
           </div>
         );
