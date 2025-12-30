@@ -18,15 +18,15 @@ export default function GamePage() {
   const params = useParams();
   const router = useRouter();
   const gameId = params.id as string;
-  
+
   const [gameState, setGameState] = useState<PlayerView | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  
+
   // UI state
   const [askingPlayerId, setAskingPlayerId] = useState<string | null>(null);
   const [draftQuestions, setDraftQuestions] = useState<Record<string, string>>({});
   const [error, setError] = useState<string>('');
-  
+
   // Voting state
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
   const [isVoteLocked, setIsVoteLocked] = useState(false);
@@ -41,11 +41,11 @@ export default function GamePage() {
 
   useEffect(() => {
     const socket = getSocket();
-    
+
     // Check if player has credentials
     const playerId = localStorage.getItem('playerId');
     const storedGameId = localStorage.getItem('gameId');
-    
+
     if (!playerId || storedGameId !== gameId) {
       router.push('/lobby');
       return;
@@ -148,7 +148,7 @@ export default function GamePage() {
   useEffect(() => {
     if (!gameState) return;
     const isVoting = gameState.phase === 'voting';
-    
+
     if (!isVoting || votingTimer <= 0) return;
 
     const timer = setInterval(() => {
@@ -244,7 +244,7 @@ export default function GamePage() {
 
   const handleLockVote = () => {
     if (!selectedVote) return;
-    
+
     setIsVoteLocked(true);
 
     // Send vote to server
@@ -265,7 +265,7 @@ export default function GamePage() {
   const handleSendChatMessage = (message: string) => {
     const socket = getSocket();
     if (!gameState) return;
-    
+
     // Emit to server - server will broadcast to all players
     socket.emit('game:voting-chat', message);
     // socket.emit('voting:chat', message);
@@ -281,7 +281,7 @@ export default function GamePage() {
         const randomTarget = eligibleTargets[Math.floor(Math.random() * eligibleTargets.length)];
         setSelectedVote(randomTarget.id);
         setIsVoteLocked(true);
-        
+
         // Send random vote to server
         const socket = getSocket();
         socket.emit('game:vote', randomTarget.id, (response) => {
@@ -291,7 +291,7 @@ export default function GamePage() {
         });
       }
     }
-    
+
     handleVotingComplete();
   };
 
@@ -337,15 +337,15 @@ export default function GamePage() {
   // Compute votes for display: show ALL players (with placeholders for those who haven't voted)
   const displayVotes = (() => {
     if (!isVotingPhase) return [];
-    
+
     const activePlayers = gameState.players.filter(p => !p.isEliminated);
     const currentRoundVotes = gameState.votes.filter(v => v.round === gameState.currentRound);
-    
+
     // Create a vote entry for each active player
     return activePlayers.map(player => {
       // Check if this player has voted on the server
       const serverVote = currentRoundVotes.find(v => v.fromPlayerId === player.id);
-      
+
       if (serverVote) {
         // Player has locked their vote
         return {
@@ -413,7 +413,7 @@ export default function GamePage() {
         {!isVotingPhase ? (
           // Question phase sidebar
           <div className="space-y-4">
-            <QuestionTracker 
+            <QuestionTracker
               players={gameState.players}
               maxQuestionsPerPlayer={maxQuestions}
             />
@@ -471,11 +471,11 @@ export default function GamePage() {
                 onChangeVote={handleChangeVote}
               />
               {/* Question History inside voting table */}
-              <div 
+              <div
                 className="absolute"
-                style={{ 
-                  top: '-30%', 
-                  left: '35%', 
+                style={{
+                  top: '0%',
+                  left: '35%',
                   transform: 'translate(-50%, -50%)',
                   width: '300px',
                   height: '230px',
@@ -497,10 +497,10 @@ export default function GamePage() {
                               <span className="font-semibold">{fromPlayer?.name}</span> → <span className="font-semibold">{toPlayer?.name}</span>
                             </div>
                             <div className="text-gray-800 font-medium">Q: {q.question}</div>
-                            {q.status === 'answered' && (
+                            {q.answer && (
                               <div className="text-green-600">A: {q.answer}</div>
                             )}
-                            {q.status === 'passed' && (
+                            {q.isPassed && (
                               <div className="text-red-500">A: Passed</div>
                             )}
                           </div>
