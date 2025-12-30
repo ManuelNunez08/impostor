@@ -53,6 +53,7 @@ export interface ClientToServerEvents {
   'game:ask-question': (data: AskQuestionData, callback: (response: ActionResponse) => void) => void;
   'game:answer-question': (data: AnswerQuestionData, callback: (response: ActionResponse) => void) => void;
   'game:pass-question': (questionId: QuestionId, callback: (response: ActionResponse) => void) => void;
+  'game:ready-to-vote': (callback: (response: ActionResponse) => void) => void;
   'game:vote': (targetPlayerId: PlayerId, callback: (response: ActionResponse) => void) => void;
   'game:guess-topic': (guess: string, callback: (response: GuessResponse) => void) => void;
 

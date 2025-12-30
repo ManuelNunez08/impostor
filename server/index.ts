@@ -129,7 +129,7 @@ io.on('connection', (socket) => {
     console.log(`Ready status: ${readyCount}/${playerCount} players ready`);
     
     // Check if all players ready → instant start
-    if (allReady && playerCount >= state.config.minPlayers && game.canStartGame()) {
+    if (allReady && playerCount >= state.settings.minPlayers && game.canStartGame()) {
       console.log(`All players ready in lobby ${gameId}, starting game immediately!`);
       
       // Clear this from waiting lobby if it's there
@@ -177,7 +177,7 @@ io.on('connection', (socket) => {
     const state = game.getState();
     const playerCount = Object.keys(state.players).length;
     
-    if (playerCount < state.config.minPlayers && state.lobbyCountdownStarted) {
+    if (playerCount < state.settings.minPlayers && state.lobbyCountdownStarted) {
       game.cancelLobbyCountdown();
       cancelCountdownTimer(gameId);
       console.log(`Player left, below minimum. Cancelled countdown for ${gameId}`);
@@ -329,8 +329,12 @@ io.on('connection', (socket) => {
       // Check if all players have voted
       const allVoted = game.getActivePlayers().every(p => p.hasVoted);
       if (allVoted) {
-        game.processVotingResults();
+        const result = game.processVotingResults();
         io.to(gameId).emit('game:voting-complete');
+        io.to(gameId).emit('game:phase-change', game.getPhase());
+        
+        // Log the voting result
+        console.log(`Voting complete in ${gameId}. Winner: ${result.winner || 'none'}, Phase: ${game.getPhase()}`);
       }
 
       broadcastGameState(gameId);
@@ -407,7 +411,7 @@ io.on('connection', (socket) => {
           const state = game.getState();
           const connectedCount = Object.values(state.players).filter(p => p.isConnected).length;
           
-          if (connectedCount < state.config.minPlayers && state.lobbyCountdownStarted) {
+          if (connectedCount < state.settings.minPlayers && state.lobbyCountdownStarted) {
             game.cancelLobbyCountdown();
             cancelCountdownTimer(gameId);
             console.log(`Player disconnected, below minimum. Cancelled countdown for ${gameId}`);
@@ -444,11 +448,15 @@ function getPlayerView(game: GameEngine, playerId: PlayerId) {
   const state = game.getState();
   const isImpostor = playerId === state.impostorId;
   
+  // Calculate currentRound as 1-based display number
+  const currentRound = state.currentRoundIndex + 1;
+  
   return {
     gameId: state.id,
     playerId,
     phase: state.phase,
-    currentRound: state.currentRound,
+    currentRound,
+    currentRoundIndex: state.currentRoundIndex,
     category: state.category,
     topic: isImpostor ? null : state.topic,
     isImpostor,
@@ -461,7 +469,8 @@ function getPlayerView(game: GameEngine, playerId: PlayerId) {
     winner: state.winner,
     timeRemaining: null,
     lobbyCountdown: game.getLobbyCountdownRemaining(),
-    config: state.config,
+    config: state.settings, // Legacy field now points to settings
+    settings: state.settings,
   };
 }
 

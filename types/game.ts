@@ -7,17 +7,49 @@ export type GameId = string;
 export type QuestionId = string;
 export type VoteId = string;
 
+// ============= NEW: Flexible Game Configuration Types =============
+
+export interface RoundConfig {
+  roundNumber: number;
+  interrogationTime: number;      // seconds for questioning phase
+  maxQuestionsPerPlayer: number;  // questions each player can ask
+  votingTime: number;             // seconds for voting phase
+  impostorCanGuess: boolean;      // if voted out, can impostor guess topic to win?
+}
+
+export interface GameSettings {
+  minPlayers: number;
+  maxPlayers: number;
+  rounds: RoundConfig[];          // Array of round configurations
+  lobbyCountdownDuration: number; // seconds
+  maxQuestionLength: number;      // words
+  answerTimeLimit: number;        // seconds to answer questions
+}
+
+// ============= Game Phase Types =============
+
+// New generic phases (for flexible round system)
 export type GamePhase =
   | 'lobby'           // Waiting for players
   | 'starting'        // Game is starting, roles being assigned
-  | 'round1-question' // Round 1 questioning phase
-  | 'round1-voting'   // Round 1 voting phase
+  | 'interrogation'   // Questioning phase (generic for any round)
+  | 'voting'          // Voting phase (generic for any round)
   | 'topic-guess'     // Impostor guessing topic
-  | 'round2-question' // Round 2 questioning phase
-  | 'round2-voting'   // Round 2 voting (final)
+  | 'results'         // Show round results
   | 'ended';          // Game over
 
-export type Round = 1 | 2;
+// Legacy phases (kept for backward compatibility during migration)
+export type LegacyGamePhase =
+  | 'lobby'
+  | 'starting'
+  | 'round1-question'
+  | 'round1-voting'
+  | 'topic-guess'
+  | 'round2-question'
+  | 'round2-voting'
+  | 'ended';
+
+export type Round = number; // Changed from 1 | 2 to support N rounds
 
 export type WinnerSide = 'impostor' | 'players' | null;
 
@@ -42,19 +74,19 @@ export interface Question {
   toPlayerId: PlayerId;
   question: string;
   answer: string | null;
-  responseType: ResponseType | null;  // NEW: Type of response
+  responseType: ResponseType | null;  // Type of response
   isPassed: boolean;                   // Keep for backwards compat
-  isTimedOut: boolean;                 // NEW: True if timed out
+  isTimedOut: boolean;                 // True if timed out
   askedAt: number;
   answeredAt: number | null;
-  round: Round;
+  round: number;                       // Round number (1, 2, 3, etc.)
 }
 
 export interface Vote {
   id: VoteId;
   fromPlayerId: PlayerId;
   targetPlayerId: PlayerId;
-  round: Round;
+  round: number;                       // Round number (1, 2, 3, etc.)
   timestamp: number;
 }
 
@@ -71,6 +103,8 @@ export interface Category {
   topics: string[];
 }
 
+// ============= Legacy Config (kept for backward compatibility) =============
+
 export interface GameConfig {
   maxPlayers: number;           // 4-6 players
   minPlayers: number;           // 4 players minimum
@@ -85,7 +119,8 @@ export interface GameConfig {
 export interface GameState {
   id: GameId;
   phase: GamePhase;
-  currentRound: Round;
+  currentRound: number;              // Current round number (1, 2, 3, etc.)
+  currentRoundIndex: number;         // NEW: Index in settings.rounds array
   
   // Game content
   category: Category;
@@ -109,19 +144,21 @@ export interface GameState {
   startedAt: number | null;
   endedAt: number | null;
   currentPhaseStartedAt: number;
-  lobbyCountdownStarted: number | null;  // NEW: When countdown started
+  lobbyCountdownStarted: number | null;
   
-  // Config
-  config: GameConfig;
+  // Config - supports both old and new during migration
+  config: GameConfig;                // Legacy config (will be deprecated)
+  settings?: GameSettings;           // NEW: Flexible settings (optional during migration)
 }
 
 export interface PlayerView {
   gameId: GameId;
   playerId: PlayerId;
   phase: GamePhase;
-  currentRound: Round;
+  currentRound: number;              // Current round number
+  currentRoundIndex: number;         // NEW: Index in settings.rounds array
   category: Category;
-  topic: string | null;  // Null if player is impostor
+  topic: string | null;              // Null if player is impostor
   isImpostor: boolean;
   players: Player[];
   questions: Question[];
@@ -131,9 +168,12 @@ export interface PlayerView {
   eliminatedPlayers: PlayerId[];
   winner: WinnerSide;
   timeRemaining: number | null;
-  lobbyCountdown: number | null;  // NEW: Countdown in lobby (seconds remaining)
-  config: GameConfig;
+  lobbyCountdown: number | null;
+  config: GameConfig;                // Legacy config
+  settings?: GameSettings;           // NEW: Flexible settings (optional during migration)
 }
+
+// ============= Default Configurations =============
 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
   maxPlayers: 6,
@@ -144,5 +184,30 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   answerTimeLimit: 30,      // 30 seconds to answer
   votingTimeLimit: 45,      // 45 seconds to vote
   lobbyCountdownDuration: 30, // 30 seconds lobby countdown
+};
+
+// NEW: Default flexible game settings (matches image specifications)
+export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  minPlayers: 4,
+  maxPlayers: 6,
+  rounds: [
+    {
+      roundNumber: 1,
+      interrogationTime: 180,         // 3:00 minutes
+      maxQuestionsPerPlayer: 2,
+      votingTime: 30,                 // 0:30 seconds
+      impostorCanGuess: true          // Impostor can guess to win if voted out
+    },
+    {
+      roundNumber: 2,
+      interrogationTime: 120,         // 2:00 minutes
+      maxQuestionsPerPlayer: 1,
+      votingTime: 30,                 // 0:30 seconds
+      impostorCanGuess: false         // Game ends if impostor voted out
+    }
+  ],
+  lobbyCountdownDuration: 30,
+  maxQuestionLength: 15,
+  answerTimeLimit: 30
 };
 
