@@ -403,12 +403,21 @@ export class GameEngine {
 
   hasMajorityLockedVotes(): boolean {
     const activePlayers = this.getActivePlayers();
-    const currentRoundVotes = this.state.votes.filter(
+    const currentRoundLockedVotes = this.state.votes.filter(
       v => v.round === this.state.currentRound && v.isLocked
     );
     
-    const majorityThreshold = Math.ceil(activePlayers.length / 2);
-    return currentRoundVotes.length >= majorityThreshold;
+    // Count locked votes per target
+    const lockedVoteCounts: Record<PlayerId, number> = {};
+    currentRoundLockedVotes.forEach(vote => {
+      lockedVoteCounts[vote.targetPlayerId] = (lockedVoteCounts[vote.targetPlayerId] || 0) + 1;
+    });
+    
+    // Check if any single target has MORE than 50% of active players' locked votes
+    const majorityThreshold = Math.floor(activePlayers.length / 2) + 1; // More than 50%
+    const maxLockedVotes = Math.max(...Object.values(lockedVoteCounts), 0);
+    
+    return maxLockedVotes >= majorityThreshold;
   }
 
   // ============= Phase Transitions =============
