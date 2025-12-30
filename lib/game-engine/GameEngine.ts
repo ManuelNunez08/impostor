@@ -440,15 +440,15 @@ export class GameEngine {
     );
 
     const activePlayers = this.getActivePlayers();
-    const majorityThreshold = Math.ceil(activePlayers.length / 2);
     
     // Get current round config for win conditions
     const settings = this.state.settings!;
     const roundConfig = getCurrentRoundConfig(settings, this.state.currentRoundIndex);
 
-    // Check if impostor received majority
+    // Check if impostor has most votes (and no tie)
+    // Impostor is caught if they have the most votes, regardless of majority threshold
     const impostorVotedOut = playersWithMaxVotes.includes(this.state.impostorId) && 
-                             maxVotes >= majorityThreshold;
+                             playersWithMaxVotes.length === 1; // Must be sole leader, no tie
 
     if (!impostorVotedOut) {
       // Impostor NOT voted out

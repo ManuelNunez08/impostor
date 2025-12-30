@@ -307,16 +307,16 @@ export default function GamePage() {
     // Only cast vote if current player is not eliminated and hasn't voted/locked
     if (!selectedVote && !isVoteLocked && gameState) {
       const currentPlayer = gameState.players.find(p => p.id === gameState.playerId);
-      
+
       // Skip if current player is eliminated
       if (currentPlayer?.isEliminated) {
         return;
       }
-      
+
       const eligibleTargets = gameState.players.filter(
         p => p.id !== gameState.playerId && !p.isEliminated
       );
-      
+
       if (eligibleTargets.length > 0) {
         const randomTarget = eligibleTargets[Math.floor(Math.random() * eligibleTargets.length)];
         setSelectedVote(randomTarget.id);
