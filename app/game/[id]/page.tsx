@@ -40,7 +40,7 @@ export default function GamePage() {
     message: string;
     timestamp: number;
   }>>([]);
-  
+
   // Results state
   const [resultsTimer, setResultsTimer] = useState(5);
 
@@ -275,13 +275,13 @@ export default function GamePage() {
   };
 
   const handleLockVote = () => {
-    if (!selectedVote) return;
+    if (!selectedVote || !gameState) return;
 
     setIsVoteLocked(true);
 
-    // Send vote to server
+    // Send vote to server with locked flag
     const socket = getSocket();
-    socket.emit('game:vote', selectedVote, (response) => {
+    socket.emit('game:vote', { targetPlayerId: selectedVote, isLocked: true }, (response) => {
       if (!response.success) {
         setError(response.error || 'Failed to cast vote');
         setIsVoteLocked(false);
@@ -304,19 +304,27 @@ export default function GamePage() {
   };
 
   const handleVotingTimerExpired = () => {
-    // Assign random vote if player hasn't voted
-    if (!selectedVote && gameState) {
+    // Only cast vote if current player is not eliminated and hasn't voted/locked
+    if (!selectedVote && !isVoteLocked && gameState) {
+      const currentPlayer = gameState.players.find(p => p.id === gameState.playerId);
+      
+      // Skip if current player is eliminated
+      if (currentPlayer?.isEliminated) {
+        return;
+      }
+      
       const eligibleTargets = gameState.players.filter(
         p => p.id !== gameState.playerId && !p.isEliminated
       );
+      
       if (eligibleTargets.length > 0) {
         const randomTarget = eligibleTargets[Math.floor(Math.random() * eligibleTargets.length)];
         setSelectedVote(randomTarget.id);
         setIsVoteLocked(true);
 
-        // Send random vote to server
+        // Send random vote to server with locked flag
         const socket = getSocket();
-        socket.emit('game:vote', randomTarget.id, (response) => {
+        socket.emit('game:vote', { targetPlayerId: randomTarget.id, isLocked: true }, (response) => {
           if (!response.success) {
             console.error('Failed to cast random vote:', response.error);
           }
@@ -613,7 +621,7 @@ export default function GamePage() {
 
       {/* Topic Guess Phase */}
       {gameState.phase === 'topic-guess' && (
-        <TopicGuessPhase 
+        <TopicGuessPhase
           gameState={gameState}
           onGuess={handleTopicGuess}
         />

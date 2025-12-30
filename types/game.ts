@@ -88,6 +88,7 @@ export interface Vote {
   targetPlayerId: PlayerId;
   round: number;                       // Round number (1, 2, 3, etc.)
   timestamp: number;
+  isLocked: boolean;                   // Whether the vote is locked in
 }
 
 export interface TopicGuess {

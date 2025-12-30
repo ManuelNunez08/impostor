@@ -310,7 +310,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('game:vote', (targetPlayerId, callback) => {
+  socket.on('game:vote', (data, callback) => {
     const gameId = playerToGame.get(socket.id);
     const playerId = playerIdMap.get(socket.id);
 
@@ -326,18 +326,24 @@ io.on('connection', (socket) => {
     }
 
     try {
-      game.castVote(playerId, targetPlayerId);
+      // Handle both old format (string) and new format (object)
+      const targetPlayerId = typeof data === 'string' ? data : data.targetPlayerId;
+      const isLocked = typeof data === 'object' && data.isLocked ? data.isLocked : false;
+      
+      game.castVote(playerId, targetPlayerId, isLocked);
       io.to(gameId).emit('game:vote-cast', playerId);
 
-      // Check if all players have voted
+      // Check if majority has locked votes OR all players have voted
       const allVoted = game.getActivePlayers().every(p => p.hasVoted);
-      if (allVoted) {
-        const result = game.processVotingResults();
+      const majorityLocked = game.hasMajorityLockedVotes();
+      
+      if (allVoted || majorityLocked) {
+        game.processVotingResults();
         io.to(gameId).emit('game:voting-complete');
         io.to(gameId).emit('game:phase-change', game.getPhase());
         
         // Log the voting result
-        console.log(`Voting complete in ${gameId}. Winner: ${result.winner || 'none'}, Phase: ${game.getPhase()}`);
+        console.log(`Voting complete in ${gameId}. Phase: ${game.getPhase()}`);
         
         // Start topic guess timer if entering topic-guess phase
         if (game.getPhase() === 'topic-guess') {

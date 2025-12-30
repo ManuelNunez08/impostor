@@ -55,7 +55,7 @@ export interface ClientToServerEvents {
   'game:answer-question': (data: AnswerQuestionData, callback: (response: ActionResponse) => void) => void;
   'game:pass-question': (questionId: QuestionId, callback: (response: ActionResponse) => void) => void;
   'game:ready-to-vote': (callback: (response: ActionResponse) => void) => void;
-  'game:vote': (targetPlayerId: PlayerId, callback: (response: ActionResponse) => void) => void;
+  'game:vote': (data: { targetPlayerId: PlayerId, isLocked?: boolean } | PlayerId, callback: (response: ActionResponse) => void) => void;
   'game:voting-chat': (message: string) => void;
   'game:guess-topic': (guess: string, callback: (response: GuessResponse) => void) => void;
   'game:continue-to-next-round': () => void;

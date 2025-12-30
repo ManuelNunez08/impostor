@@ -364,7 +364,7 @@ export class GameEngine {
     return { can: true };
   }
 
-  castVote(fromPlayerId: PlayerId, targetPlayerId: PlayerId): Vote {
+  castVote(fromPlayerId: PlayerId, targetPlayerId: PlayerId, isLocked: boolean = false): Vote {
     const validation = this.canPlayerVote(fromPlayerId);
     if (!validation.can) {
       throw new Error(validation.reason);
@@ -375,18 +375,40 @@ export class GameEngine {
       throw new Error('Target player not found or eliminated');
     }
 
+    // Check if player already voted this round
+    const existingVoteIndex = this.state.votes.findIndex(
+      v => v.fromPlayerId === fromPlayerId && v.round === this.state.currentRound
+    );
+
     const vote: Vote = {
-      id: generateId(),
+      id: existingVoteIndex >= 0 ? this.state.votes[existingVoteIndex].id : generateId(),
       fromPlayerId,
       targetPlayerId,
       round: this.state.currentRound,
       timestamp: Date.now(),
+      isLocked,
     };
 
-    this.state.votes.push(vote);
-    this.state.players[fromPlayerId].hasVoted = true;
+    if (existingVoteIndex >= 0) {
+      // Update existing vote
+      this.state.votes[existingVoteIndex] = vote;
+    } else {
+      // Add new vote
+      this.state.votes.push(vote);
+      this.state.players[fromPlayerId].hasVoted = true;
+    }
 
     return vote;
+  }
+
+  hasMajorityLockedVotes(): boolean {
+    const activePlayers = this.getActivePlayers();
+    const currentRoundVotes = this.state.votes.filter(
+      v => v.round === this.state.currentRound && v.isLocked
+    );
+    
+    const majorityThreshold = Math.ceil(activePlayers.length / 2);
+    return currentRoundVotes.length >= majorityThreshold;
   }
 
   // ============= Phase Transitions =============
