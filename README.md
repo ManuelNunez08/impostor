@@ -1,36 +1,180 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Impostor - Social Deduction Game
 
-## Getting Started
+A multiplayer web-based social deduction game built with Next.js, TypeScript, and Socket.io.
 
-First, run the development server:
+## 🎮 Game Overview
 
+Impostor is a social deduction game for 4-6 players where all players share the same secret topic—except one, the Impostor, who must deduce the topic without being exposed. Players ask and answer short, directed questions to identify the Impostor before time runs out.
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <your-repo-url>
+cd impostor
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Copy environment variables:
+```bash
+cp .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Running the Application
 
-## Learn More
+#### Development Mode
 
-To learn more about Next.js, take a look at the following resources:
+Run both the Next.js frontend and Socket.io server concurrently:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run dev:all
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Or run them separately:
 
-## Deploy on Vercel
+```bash
+# Terminal 1 - Next.js frontend
+npm run dev
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Terminal 2 - Socket.io server
+npm run dev:server
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The application will be available at:
+- Frontend: http://localhost:3000
+- Socket.io Server: http://localhost:3001
+
+## 📁 Project Structure
+
+```
+impostor/
+├── app/                    # Next.js app router pages
+│   ├── page.tsx           # Landing page
+│   ├── lobby/             # Lobby/join page
+│   ├── game/[id]/         # Game room page
+│   └── rules/             # Rules page
+├── components/            # React components
+│   ├── game/             # Game-specific components
+│   ├── lobby/            # Lobby components
+│   └── ui/               # Reusable UI components
+├── lib/                   # Core logic
+│   ├── game-engine/      # Game state and rules
+│   ├── socket/           # Socket.io client setup
+│   ├── db/               # Database utilities
+│   └── matchmaking/      # Matchmaking logic
+├── types/                 # TypeScript type definitions
+├── server/                # Socket.io server
+├── prisma/                # Database schema
+└── public/                # Static assets
+```
+
+## 🛠️ Tech Stack
+
+### Frontend
+- **Next.js 14** - React framework with App Router
+- **TypeScript** - Type safety
+- **Tailwind CSS** - Styling
+- **Socket.io Client** - Real-time communication
+
+### Backend
+- **Node.js** - Runtime
+- **Socket.io** - WebSocket server
+- **Prisma** - Database ORM (ready to configure)
+- **Redis** - Session management (ready to configure)
+
+## 🎯 Current Features
+
+- ✅ Landing page with game overview
+- ✅ Lobby system for joining games
+- ✅ Real-time game state synchronization
+- ✅ Core game engine with full rule implementation
+- ✅ Question/answer system
+- ✅ Voting mechanism
+- ✅ Win condition handling
+- ✅ Full game rules page
+
+## 🚧 Roadmap
+
+### Phase 1: Core Functionality (Current)
+- [x] Project structure
+- [x] Game engine
+- [x] Basic UI pages
+- [ ] Complete game flow implementation
+- [ ] Timer system
+- [ ] Question/answer UI components
+- [ ] Voting UI
+
+### Phase 2: Matchmaking
+- [ ] Queue system
+- [ ] Auto-matching
+- [ ] Private rooms
+
+### Phase 3: Persistence
+- [ ] Database setup (Prisma + PostgreSQL)
+- [ ] User accounts
+- [ ] Game history
+- [ ] Statistics
+
+### Phase 4: Polish
+- [ ] Animations
+- [ ] Sound effects
+- [ ] Mobile optimization
+- [ ] Tutorial/onboarding
+
+## 🎮 How to Play
+
+1. Visit the home page and click "Play Now"
+2. Enter your name in the lobby
+3. Wait for 4-6 players to join
+4. Once everyone is ready, the game begins
+5. If you're the Impostor, try to blend in without knowing the topic
+6. If you're a regular player, ask strategic questions to find the Impostor
+7. Vote for who you think is the Impostor
+8. Win by correctly identifying the Impostor or surviving as the Impostor!
+
+## 📝 Development Notes
+
+### Adding New Categories/Topics
+
+Edit `lib/game-engine/categories.ts` to add new categories and topics:
+
+```typescript
+{
+  id: 'your-category',
+  name: 'Your Category Name',
+  description: 'Description',
+  topics: ['Topic 1', 'Topic 2', ...],
+}
+```
+
+### Socket Events
+
+All socket events are typed in `types/socket.ts`. The server implementation is in `server/index.ts`.
+
+### Game State Management
+
+The game engine (`lib/game-engine/GameEngine.ts`) manages all game logic and state transitions. It's framework-agnostic and can be tested independently.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+## 🙏 Acknowledgments
+
+- Inspired by social deduction games like Spyfall and Among Us
+- Built with modern web technologies for real-time multiplayer experiences
