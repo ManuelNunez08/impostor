@@ -56,6 +56,8 @@ export class GameEngine {
       endedAt: null,
       currentPhaseStartedAt: Date.now(),
       lobbyCountdownStarted: null,
+      interrogationStartedAt: null,
+      interrogationEndsAt: null,
       config: legacyConfig,        // Legacy config
       settings: gameSettings,      // NEW: Flexible settings
     };
@@ -142,6 +144,15 @@ export class GameEngine {
     return Math.ceil(remaining);
   }
 
+  getInterrogationTimeRemaining(): number | null {
+    if (!this.state.interrogationEndsAt || this.state.phase !== 'interrogation') {
+      return null;
+    }
+    
+    const remaining = Math.max(0, this.state.interrogationEndsAt - Date.now());
+    return Math.ceil(remaining / 1000); // Return seconds
+  }
+
   startGame(forceStart: boolean = false): void {
     const playerCount = Object.keys(this.state.players).length;
     const settings = this.state.settings!;
@@ -170,6 +181,12 @@ export class GameEngine {
     this.state.phase = 'interrogation';  // NEW: Generic phase
     this.state.startedAt = Date.now();
     this.state.currentPhaseStartedAt = Date.now();
+    
+    // Start interrogation timer
+    const roundConfig = settings.rounds[0];
+    const interrogationDuration = roundConfig.interrogationTime * 1000; // Convert to milliseconds
+    this.state.interrogationStartedAt = Date.now();
+    this.state.interrogationEndsAt = Date.now() + interrogationDuration;
   }
 
   // ============= Question Management =============
@@ -482,6 +499,12 @@ export class GameEngine {
     });
 
     this.state.currentPhaseStartedAt = Date.now();
+    
+    // Start interrogation timer for new round
+    const roundConfig = settings.rounds[this.state.currentRoundIndex];
+    const interrogationDuration = roundConfig.interrogationTime * 1000;
+    this.state.interrogationStartedAt = Date.now();
+    this.state.interrogationEndsAt = Date.now() + interrogationDuration;
   }
 
   // NEW: Get current round configuration

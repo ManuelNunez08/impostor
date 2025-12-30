@@ -373,13 +373,25 @@ export default function GamePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 p-4">
+      {/* Interrogation Timer (only shown during interrogation) */}
+      {canAsk && gameState.timeRemaining !== null && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
+          <div className="bg-white rounded-full shadow-2xl px-8 py-4 border-4 border-green-600">
+            <div className="text-center">
+              <div className="text-5xl font-bold text-gray-800">{Math.floor(gameState.timeRemaining / 60)}:{String(gameState.timeRemaining % 60).padStart(2, '0')}</div>
+              <div className="text-sm text-gray-600 mt-1">Interrogation - Round {gameState.currentRound}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Voting Timer (only shown during voting) */}
       {isVotingPhase && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
           <div className="bg-white rounded-full shadow-2xl px-8 py-4 border-4 border-purple-600">
             <div className="text-center">
               <div className="text-5xl font-bold text-gray-800">{Math.floor(votingTimer / 60)}:{String(votingTimer % 60).padStart(2, '0')}</div>
-              <div className="text-sm text-gray-600 mt-1">Round: {gameState.currentRound}</div>
+              <div className="text-sm text-gray-600 mt-1">Voting - Round {gameState.currentRound}</div>
             </div>
           </div>
         </div>

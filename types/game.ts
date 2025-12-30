@@ -142,6 +142,8 @@ export interface GameState {
   // Timing
   createdAt: number;
   startedAt: number | null;
+  interrogationStartedAt: number | null;  // When current interrogation phase started
+  interrogationEndsAt: number | null;     // When current interrogation phase should end
   endedAt: number | null;
   currentPhaseStartedAt: number;
   lobbyCountdownStarted: number | null;

@@ -31,6 +31,7 @@ let waitingLobby: { game: GameEngine; gameId: string } | null = null;
 
 // Countdown timers
 const countdownTimers = new Map<string, NodeJS.Timeout>();
+const interrogationTimers = new Map<string, NodeJS.Timeout>();
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -140,6 +141,7 @@ io.on('connection', (socket) => {
       try {
         game.startGame();
         console.log(`Game ${gameId} started! Impostor: ${game.getImpostorId()}`);
+        startInterrogationTimer(gameId); // Start interrogation countdown
         io.to(gameId).emit('game:phase-change', game.getPhase());
         broadcastGameState(gameId);
       } catch (error) {
@@ -491,7 +493,7 @@ function getPlayerView(game: GameEngine, playerId: PlayerId) {
     canVote: game.canPlayerVote(playerId).can,
     eliminatedPlayers: state.eliminatedPlayers,
     winner: state.winner,
-    timeRemaining: null,
+    timeRemaining: game.getInterrogationTimeRemaining(),
     lobbyCountdown: game.getLobbyCountdownRemaining(),
     config: state.settings, // Legacy field now points to settings
     settings: state.settings,
@@ -526,6 +528,7 @@ function startCountdownTimer(gameId: string) {
       try {
         game.startGame(true); // Force start when countdown expires
         console.log(`Countdown expired for ${gameId}, starting game! Impostor: ${game.getImpostorId()}`);
+        startInterrogationTimer(gameId); // Start interrogation countdown
         io.to(gameId).emit('game:phase-change', game.getPhase());
         broadcastGameState(gameId);
       } catch (error) {
@@ -545,6 +548,55 @@ function cancelCountdownTimer(gameId: string) {
     clearInterval(countdownTimers.get(gameId)!);
     countdownTimers.delete(gameId);
     console.log(`Cancelled countdown for ${gameId}`);
+  }
+}
+
+function startInterrogationTimer(gameId: string) {
+  // Clear existing timer if any
+  if (interrogationTimers.has(gameId)) {
+    clearInterval(interrogationTimers.get(gameId)!);
+  }
+
+  const timer = setInterval(() => {
+    const game = games.get(gameId);
+    if (!game) {
+      clearInterval(timer);
+      interrogationTimers.delete(gameId);
+      return;
+    }
+
+    const remaining = game.getInterrogationTimeRemaining();
+    
+    if (remaining === null || remaining <= 0) {
+      // Interrogation time expired, force transition to voting
+      clearInterval(timer);
+      interrogationTimers.delete(gameId);
+      
+      try {
+        // Timeout any pending questions
+        game.timeoutAllPendingQuestions();
+        // Transition to voting
+        game.transitionToVoting();
+        console.log(`Interrogation time expired for ${gameId}, forcing voting phase`);
+        io.to(gameId).emit('game:phase-change', game.getPhase());
+        broadcastGameState(gameId);
+      } catch (error) {
+        console.error('Error transitioning to voting after timer:', error);
+      }
+    } else {
+      // Broadcast updated time remaining
+      broadcastGameState(gameId);
+    }
+  }, 1000); // Update every second
+
+  interrogationTimers.set(gameId, timer);
+}
+
+function cancelInterrogationTimer(gameId: string) {
+  if (interrogationTimers.has(gameId)) {
+    clearInterval(interrogationTimers.get(gameId)!);
+    interrogationTimers.delete(gameId);
+    console.log(`Cancelled interrogation timer for ${gameId}`);
   }
 }
 
