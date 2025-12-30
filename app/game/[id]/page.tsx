@@ -129,18 +129,20 @@ export default function GamePage() {
 
   // Reset voting state when entering voting phase
   useEffect(() => {
-    if (gameState && (gameState.phase === 'round1-voting' || gameState.phase === 'round2-voting')) {
+    if (gameState && gameState.phase === 'voting') {
       setSelectedVote(null);
       setIsVoteLocked(false);
-      setVotingTimer(30);
+      // Get voting time from current round config
+      const votingTime = gameState.settings?.rounds[gameState.currentRoundIndex]?.votingTime || 30;
+      setVotingTimer(votingTime);
       setChatMessages([]);
     }
-  }, [gameState?.phase]);
+  }, [gameState?.phase, gameState?.currentRoundIndex]);
 
   // Voting timer countdown
   useEffect(() => {
     if (!gameState) return;
-    const isVoting = gameState.phase === 'round1-voting' || gameState.phase === 'round2-voting';
+    const isVoting = gameState.phase === 'voting';
     
     if (!isVoting || votingTimer <= 0) return;
 
@@ -329,12 +331,12 @@ export default function GamePage() {
   const pendingQuestion = getPendingQuestionForCurrentPlayer();
   const fromPlayer = pendingQuestion ? gameState.players.find(p => p.id === pendingQuestion.fromPlayerId) : null;
 
-  const maxQuestions = gameState.currentRound === 1 
-    ? gameState.config?.round1QuestionsPerPlayer || 2
-    : gameState.config?.round2QuestionsPerPlayer || 1;
+  // Get max questions from current round config
+  const maxQuestions = gameState.settings?.rounds[gameState.currentRoundIndex]?.maxQuestionsPerPlayer || 2;
 
-  const canAsk = gameState.phase === 'round1-question' || gameState.phase === 'round2-question';
-  const isVotingPhase = gameState.phase === 'round1-voting' || gameState.phase === 'round2-voting';
+  // Use generic phase names (new flexible system)
+  const canAsk = gameState.phase === 'interrogation';
+  const isVotingPhase = gameState.phase === 'voting';
 
   // Compute votes for display: show ALL players (with placeholders for those who haven't voted)
   const displayVotes = (() => {
@@ -499,7 +501,7 @@ export default function GamePage() {
           targetPlayer={askingPlayer}
           onSubmit={handleSubmitQuestion}
           onCancel={handleCancelAsk}
-          maxWords={gameState.config?.maxQuestionLength || 15}
+          maxWords={gameState.settings?.maxQuestionLength || 15}
           savedDraft={draftQuestions[askingPlayerId]}
         />
       )}
@@ -511,7 +513,7 @@ export default function GamePage() {
           fromPlayer={fromPlayer}
           onAnswer={handleAnswerQuestion}
           onPass={handlePassQuestion}
-          timeLimit={gameState.config?.answerTimeLimit || 30}
+          timeLimit={gameState.settings?.answerTimeLimit || 30}
         />
       )}
 
