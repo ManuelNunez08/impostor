@@ -33,6 +33,7 @@ let waitingLobby: { game: GameEngine; gameId: string } | null = null;
 const countdownTimers = new Map<string, NodeJS.Timeout>();
 const interrogationTimers = new Map<string, NodeJS.Timeout>();
 const topicGuessTimers = new Map<string, NodeJS.Timeout>();
+const questionTimers = new Map<string, NodeJS.Timeout>(); // questionId -> timeout
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -211,6 +212,34 @@ io.on('connection', (socket) => {
       const question = game.askQuestion(playerId, data.toPlayerId, data.question);
       io.to(gameId).emit('game:question-asked', question.id);
       broadcastGameState(gameId);
+      
+      // Set up timeout timer for this question
+      const state = game.getState();
+      const answerTimeLimit = (state.settings?.answerTimeLimit || 30) * 1000; // Convert to milliseconds
+      
+      const timer = setTimeout(() => {
+        try {
+          // Check if question still exists and hasn't been answered
+          const currentState = game.getState();
+          const currentQuestion = currentState.questions.find(q => q.id === question.id);
+          
+          if (currentQuestion && currentQuestion.answer === null && !currentQuestion.isPassed && !currentQuestion.isTimedOut) {
+            game.timeoutQuestion(question.id);
+            io.to(gameId).emit('game:question-timed-out', question.id);
+            broadcastGameState(gameId);
+            console.log(`Question ${question.id} timed out after ${answerTimeLimit}ms`);
+          }
+          
+          // Clean up timer
+          questionTimers.delete(question.id);
+        } catch (error) {
+          console.error('Error timing out question:', error);
+          questionTimers.delete(question.id);
+        }
+      }, answerTimeLimit);
+      
+      questionTimers.set(question.id, timer);
+      
       callback({ success: true });
     } catch (error) {
       callback({ success: false, error: String(error) });
@@ -240,6 +269,14 @@ io.on('connection', (socket) => {
 
     try {
       game.answerQuestion(data.questionId, data.answer);
+      
+      // Clear the timeout timer if it exists
+      const timer = questionTimers.get(data.questionId);
+      if (timer) {
+        clearTimeout(timer);
+        questionTimers.delete(data.questionId);
+      }
+      
       io.to(gameId).emit('game:answer-given', data.questionId, data.answer);
       broadcastGameState(gameId);
       callback({ success: true });
@@ -265,6 +302,14 @@ io.on('connection', (socket) => {
 
     try {
       game.passQuestion(questionId);
+      
+      // Clear the timeout timer if it exists
+      const timer = questionTimers.get(questionId);
+      if (timer) {
+        clearTimeout(timer);
+        questionTimers.delete(questionId);
+      }
+      
       io.to(gameId).emit('game:question-passed', questionId);
       broadcastGameState(gameId);
       callback({ success: true });
@@ -297,6 +342,15 @@ io.on('connection', (socket) => {
       // Check if majority is ready to vote
       if (game.shouldForceVoting()) {
         console.log(`Majority ready to vote in ${gameId}, forcing voting phase`);
+        // Clear all question timers before timing out questions
+        const state = game.getState();
+        state.questions.forEach(q => {
+          const timer = questionTimers.get(q.id);
+          if (timer) {
+            clearTimeout(timer);
+            questionTimers.delete(q.id);
+          }
+        });
         game.timeoutAllPendingQuestions();
         game.transitionToVoting();
         io.to(gameId).emit('game:phase-change', game.getPhase());
@@ -605,6 +659,15 @@ function startInterrogationTimer(gameId: string) {
       interrogationTimers.delete(gameId);
       
       try {
+        // Clear all question timers before timing out questions
+        const state = game.getState();
+        state.questions.forEach(q => {
+          const timer = questionTimers.get(q.id);
+          if (timer) {
+            clearTimeout(timer);
+            questionTimers.delete(q.id);
+          }
+        });
         // Timeout any pending questions
         game.timeoutAllPendingQuestions();
         // Transition to voting

@@ -55,21 +55,38 @@ export default function ResultsPhase({ gameState }: ResultsPhaseProps) {
         };
       } else {
         // No winner yet - check if impostor was caught
+        // Find the impostor ID from the game state
         const impostorId = gameState.players.find(p => {
-          // Find impostor by checking if anyone other than current player is in eliminated list
-          // and if current player is impostor, check if they're eliminated
-          return gameState.eliminatedPlayers.includes(p.id) && p.id !== gameState.playerId;
+          // The impostor is the one whose ID matches the game's impostorId
+          // We need to check if they're in eliminatedPlayers
+          return gameState.eliminatedPlayers.includes(p.id);
         })?.id;
         
-        const impostorCaught = gameState.eliminatedPlayers.length > 0 && 
-                               gameState.eliminatedPlayers.some(id => id !== gameState.playerId);
+        const impostorCaught = impostorId !== undefined && gameState.eliminatedPlayers.includes(impostorId);
         
         if (impostorCaught) {
-          return {
-            title: "🎯 Impostor Caught!",
-            message: "The impostor has been caught, but they still have a chance to escape if they choose the right topic...",
-            color: "text-green-600"
-          };
+          // Check if impostor can guess topic in current round
+          const currentRoundConfig = gameState.settings?.rounds[gameState.currentRoundIndex];
+          const canGuess = currentRoundConfig?.impostorCanGuess ?? false;
+          
+          if (canGuess) {
+            // Impostor can still guess - they should be in topic-guess phase
+            // But if we're in results phase, it means they're about to get a chance
+            return {
+              title: "🎯 Impostor Caught!",
+              message: "The impostor has been caught, but they still have a chance to escape if they choose the right topic...",
+              color: "text-green-600"
+            };
+          } else {
+            // Impostor caught but cannot guess - game should be over
+            // Note: The game engine should have called endGame, but if we're still in results phase,
+            // show the correct message
+            return {
+              title: "🎯 Impostor Caught!",
+              message: "The impostor has been caught! The game is over.",
+              color: "text-green-600"
+            };
+          }
         } else {
           return {
             title: "⚠️ Still at Large",

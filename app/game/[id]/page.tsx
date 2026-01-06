@@ -286,7 +286,7 @@ export default function GamePage() {
 
   const handleLockVote = () => {
     if (!selectedVote || !gameState) return;
-    
+
     // Prevent eliminated players from locking votes
     if (currentPlayer?.isEliminated) {
       setError('You cannot vote - you have been eliminated');

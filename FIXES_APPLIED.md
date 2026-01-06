@@ -140,3 +140,10 @@ cp .env.local.example .env.local
 Enjoy your working Impostor game! 🎮
 
 
+
+
+
+
+
+
+

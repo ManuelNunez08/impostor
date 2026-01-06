@@ -22,10 +22,10 @@ export default function LobbyTable({ players, currentPlayerId, lobbyCode }: Lobb
   
   // Calculate even spacing between players
   const angleSpacing = 360 / playerCount;
-  
+
   // Find current player index
   const currentPlayerIndex = players.findIndex(p => p.id === currentPlayerId);
-  
+
   // Reorder players so current player is first, followed by others in original order
   const reorderedPlayers = [...players];
   if (currentPlayerIndex !== -1) {
