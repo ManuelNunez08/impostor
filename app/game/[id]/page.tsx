@@ -13,8 +13,10 @@ import ReadyToVoteBox from '@/components/game/ReadyToVoteBox';
 import VotingTable from '@/components/game/VotingTable';
 import CurrentVotes from '@/components/game/CurrentVotes';
 import VotingChat from '@/components/game/VotingChat';
+import PrepareToVote from '@/components/game/PrepareToVote';
 import ResultsPhase from '@/components/game/ResultsPhase';
 import TopicGuessPhase from '@/components/game/TopicGuessPhase';
+import TopicDropdown from '@/components/shared/TopicDropdown';
 
 export default function GamePage() {
   const params = useParams();
@@ -33,16 +35,6 @@ export default function GamePage() {
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
   const [isVoteLocked, setIsVoteLocked] = useState(false);
   const [votingTimer, setVotingTimer] = useState(30);
-  const [chatMessages, setChatMessages] = useState<Array<{
-    id: string;
-    playerId: string;
-    playerName: string;
-    message: string;
-    timestamp: number;
-  }>>([]);
-
-  // Results state
-  const [resultsTimer, setResultsTimer] = useState(5);
 
   useEffect(() => {
     const socket = getSocket();
@@ -107,6 +99,13 @@ export default function GamePage() {
       console.log('Phase changed to:', phase);
     });
 
+    socket.on('game:timer-update', (timeRemaining: number) => {
+      // Update voting timer from server (only timer that needs client-side state)
+      // Results, interrogation, and topic-guess timers are in gameState.timeRemaining
+      // and will be updated via state-update broadcasts
+      setVotingTimer(timeRemaining);
+    });
+
     socket.on('game:ended', (winner, reason) => {
       console.log('Game ended:', winner, reason);
     });
@@ -122,8 +121,11 @@ export default function GamePage() {
       }
     });
 
-    socket.on('game:voting-chat', (message) => {
-      setChatMessages(prev => [...prev, message]);
+    // Chat messages are now included in gameState.chatMessages
+    // Still listen to real-time updates for immediate UI feedback
+    socket.on('game:voting-chat', () => {
+      // Chat message already added to gameState via broadcastGameState
+      // This listener is kept for potential future real-time optimizations
     });
 
     return () => {
@@ -134,6 +136,7 @@ export default function GamePage() {
       socket.off('game:ended');
       socket.off('error');
       socket.off('game:voting-chat');
+      socket.off('game:timer-update');
     };
   }, [gameId, router]);
 
@@ -142,60 +145,19 @@ export default function GamePage() {
     if (gameState && gameState.phase === 'voting') {
       setSelectedVote(null);
       setIsVoteLocked(false);
-      // Get voting time from current round config
+      // Get initial voting time from current round config (server will sync via timer-update)
       const votingTime = gameState.settings?.rounds[gameState.currentRoundIndex]?.votingTime || 30;
       setVotingTimer(votingTime);
-      setChatMessages([]);
+      // Chat messages are now persisted in gameState, no need to clear
     }
   }, [gameState?.phase, gameState?.currentRoundIndex]);
 
-  // Voting timer countdown
-  useEffect(() => {
-    if (!gameState) return;
-    const isVoting = gameState.phase === 'voting';
+  // Voting timer - now synced from server via game:timer-update events
+  // No local countdown needed, server sends updates every second
 
-    if (!isVoting || votingTimer <= 0) return;
-
-    const timer = setInterval(() => {
-      setVotingTimer(prev => {
-        if (prev <= 1) {
-          // Timer expired, trigger results
-          handleVotingTimerExpired();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [gameState?.phase, votingTimer]);
-
-  // Reset results timer when entering results phase
-  useEffect(() => {
-    if (gameState && gameState.phase === 'results') {
-      setResultsTimer(5);
-    }
-  }, [gameState?.phase]);
-
-  // Results phase auto-progression
-  useEffect(() => {
-    if (!gameState || gameState.phase !== 'results') return;
-    if (gameState.winner !== null) return; // Don't auto-progress if game over
-
-    const timer = setInterval(() => {
-      setResultsTimer(prev => {
-        if (prev <= 1) {
-          // Trigger transition to next round
-          const socket = getSocket();
-          socket.emit('game:continue-to-next-round');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [gameState?.phase, gameState?.winner, resultsTimer]);
+  // Results phase auto-progression - now handled by server timer
+  // Server will automatically transition when timer expires
+  // No client-side countdown needed
 
   const handleAskPlayer = (targetPlayerId: string) => {
     // Prevent eliminated players from asking questions
@@ -320,12 +282,19 @@ export default function GamePage() {
   };
 
   const handleVotingTimerExpired = () => {
+    // Check if we're still in voting phase before attempting to cast vote
+    if (!gameState || gameState.phase !== 'voting') {
+      handleVotingComplete();
+      return;
+    }
+
     // Only cast vote if current player is not eliminated and hasn't voted/locked
     if (!selectedVote && !isVoteLocked && gameState) {
       const currentPlayer = gameState.players.find(p => p.id === gameState.playerId);
 
       // Skip if current player is eliminated
       if (currentPlayer?.isEliminated) {
+        handleVotingComplete();
         return;
       }
 
@@ -342,7 +311,14 @@ export default function GamePage() {
         const socket = getSocket();
         socket.emit('game:vote', { targetPlayerId: randomTarget.id, isLocked: true }, (response) => {
           if (!response.success) {
-            console.error('Failed to cast random vote:', response.error);
+            // Silently handle errors - phase might have changed or vote already cast
+            // Only log in development for debugging
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('Failed to cast random vote (phase may have changed):', response.error);
+            }
+            // Reset vote state on error
+            setSelectedVote(null);
+            setIsVoteLocked(false);
           }
         });
       }
@@ -399,6 +375,7 @@ export default function GamePage() {
   // Only allow actions if current player is not eliminated
   const canAsk = gameState.phase === 'interrogation' && !currentPlayer?.isEliminated;
   const isVotingPhase = gameState.phase === 'voting';
+  const isInterrogationPhase = gameState.phase === 'interrogation';
   const canVote = isVotingPhase && !currentPlayer?.isEliminated;
 
   // Compute votes for display: show ALL players (with placeholders for those who haven't voted)
@@ -439,10 +416,12 @@ export default function GamePage() {
   })();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 p-4 relative">
+      {/* Main Grid Layout - Two Columns */}
+      <div className="max-w-7xl mx-auto grid grid-cols-[2fr_1fr] gap-6 h-[calc(100vh-2rem)] relative">
       {/* Interrogation Timer (only shown during interrogation) */}
       {canAsk && gameState.timeRemaining !== null && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-40">
           <div className="bg-white rounded-full shadow-2xl px-8 py-4 border-4 border-green-600">
             <div className="text-center">
               <div className="text-5xl font-bold text-gray-800">{Math.floor(gameState.timeRemaining / 60)}:{String(gameState.timeRemaining % 60).padStart(2, '0')}</div>
@@ -454,7 +433,7 @@ export default function GamePage() {
 
       {/* Voting Timer (only shown during voting) */}
       {isVotingPhase && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-40">
           <div className="bg-white rounded-full shadow-2xl px-8 py-4 border-4 border-purple-600">
             <div className="text-center">
               <div className="text-5xl font-bold text-gray-800">{Math.floor(votingTimer / 60)}:{String(votingTimer % 60).padStart(2, '0')}</div>
@@ -463,11 +442,11 @@ export default function GamePage() {
           </div>
         </div>
       )}
-
-      {/* Top Bar */}
-      <div className="max-w-7xl mx-auto mb-4 flex justify-between items-start">
-        {/* Left: Category and Topic */}
-        <div className="bg-white rounded-lg shadow-lg p-4">
+        {/* Left Column - Larger */}
+        <div className="grid grid-rows-[auto_1fr] gap-4">
+          {/* Top Row: Category/Topic Panel - only left side */}
+          <div className="grid grid-cols-[auto_1fr] gap-4">
+            <div className="bg-white rounded-lg shadow-lg p-4 w-fit">
           <div className="text-sm text-gray-600">Category: {gameState.category.name}</div>
           {gameState.isImpostor ? (
             <div className="bg-red-100 text-red-700 px-3 py-2 rounded-lg font-bold mt-2">
@@ -481,48 +460,24 @@ export default function GamePage() {
           <div className="text-xs text-gray-500 mt-2">
             Phase: {gameState.phase} | Round: {gameState.currentRound}
           </div>
+          {(isVotingPhase || isInterrogationPhase) && (
+            <div className="mt-2">
+              <TopicDropdown category={gameState.category} />
+            </div>
+          )}
           {isVotingPhase && (
             <div className="text-sm font-bold text-purple-600 mt-2">
               🗳️ Voting Phase
             </div>
           )}
         </div>
-
-        {/* Right: Conditional sidebar */}
-        {!isVotingPhase ? (
-          // Question phase sidebar
-          <div className="space-y-4">
-            <QuestionTracker
-              players={gameState.players}
-              maxQuestionsPerPlayer={maxQuestions}
-            />
-            {canAsk && (
-              <ReadyToVoteBox
-                players={gameState.players}
-                currentPlayerId={gameState.playerId}
-                isCurrentPlayerReady={currentPlayer?.isReadyToVote || false}
-                onReadyClick={handleReadyToVote}
-              />
-            )}
-          </div>
-        ) : (
-          // Voting phase sidebar
-          <div className="space-y-4 w-80">
-            <CurrentVotes
-              players={gameState.players}
-              currentPlayerId={gameState.playerId}
-              votes={displayVotes}
-            />
-          </div>
-        )}
       </div>
 
-      {/* Main Game Area */}
-      <div className="max-w-7xl mx-auto">
+          {/* Bottom Row: Table Container - Fixed dimensions for strict positioning */}
+          <div className="relative w-full h-full min-h-[700px]">
         {!isVotingPhase ? (
           // Question/Answer Phase
-          <div className="relative">
-            {/* Show spectator message for eliminated players */}
+              <>
             {currentPlayer?.isEliminated && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-gray-800/90 text-white px-6 py-3 rounded-lg shadow-xl">
                 <div className="text-center">
@@ -532,25 +487,20 @@ export default function GamePage() {
                 </div>
               </div>
             )}
-            {/* Circular Table with Players */}
             <CircularTable
               players={gameState.players}
               currentPlayerId={gameState.playerId}
               onAskPlayer={handleAskPlayer}
               canAsk={canAsk && gameState.canAskQuestion}
             />
-
-            {/* Center Dialogue */}
             <CenterDialogue
               questions={gameState.questions}
               players={gameState.players}
             />
-          </div>
+              </>
         ) : (
           // Voting Phase
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2 relative">
-              {/* Show spectator message for eliminated players */}
+              <>
               {currentPlayer?.isEliminated && (
                 <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-gray-800/90 text-white px-6 py-3 rounded-lg shadow-xl">
                   <div className="text-center">
@@ -569,57 +519,83 @@ export default function GamePage() {
                 onLockVote={handleLockVote}
                 onChangeVote={handleChangeVote}
               />
-              {/* Question History inside voting table */}
+              {/* Voting Chat overlay - positioned over the table */}
               <div
-                className="absolute"
-                style={{
-                  top: '0%',
-                  left: '35%',
-                  transform: 'translate(-50%, -50%)',
-                  width: '300px',
-                  height: '230px',
-                  pointerEvents: 'none'
-                }}
+                className="absolute z-20"
+                  style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)', marginTop: '-60px' }}
               >
-                <div className="bg-white/95 rounded-lg shadow-lg p-3 h-full overflow-y-auto pointer-events-auto">
-                  <h4 className="text-xs font-bold text-gray-700 mb-2 text-center">Question History</h4>
-                  <div className="space-y-2">
-                    {gameState.questions.length === 0 ? (
-                      <p className="text-[10px] text-gray-400 text-center">No questions asked</p>
-                    ) : (
-                      gameState.questions.map((q) => {
-                        const fromPlayer = gameState.players.find(p => p.id === q.fromPlayerId);
-                        const toPlayer = gameState.players.find(p => p.id === q.toPlayerId);
-                        return (
-                          <div key={q.id} className="text-[10px] border-b border-gray-200 pb-1">
-                            <div className="text-gray-600">
-                              <span className="font-semibold">{fromPlayer?.name}</span> → <span className="font-semibold">{toPlayer?.name}</span>
-                            </div>
-                            <div className="text-gray-800 font-medium">Q: {q.question}</div>
-                            {q.answer && (
-                              <div className="text-green-600">A: {q.answer}</div>
-                            )}
-                            {q.isPassed && (
-                              <div className="text-red-500">A: Passed</div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                <VotingChat
+                  players={gameState.players}
+                  currentPlayerId={gameState.playerId}
+                  messages={gameState.chatMessages?.filter(msg => msg.round === gameState.currentRound) || []}
+                  onSendMessage={handleSendChatMessage}
+                />
                 </div>
+              </>
+            )}
               </div>
             </div>
+
+        {/* Right Column - Smaller */}
+        <div className="grid grid-rows-[auto_auto_1fr] gap-4">
+          {/* Top Row: First Component */}
+          {!isVotingPhase ? (
+            <QuestionTracker
+              players={gameState.players}
+              maxQuestionsPerPlayer={maxQuestions}
+            />
+          ) : (
+            /* Question History - top right during voting phase */
+            <div className="w-[400px] h-[350px] overflow-y-auto bg-white/95 backdrop-blur rounded-lg shadow-inner p-3">
+              <h4 className="text-sm font-bold text-gray-700 mb-2 text-center">Question History</h4>
+              <div className="space-y-2">
+                {gameState.questions.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center">No questions asked</p>
+                ) : (
+                  gameState.questions.map((q) => {
+                    const fromPlayer = gameState.players.find(p => p.id === q.fromPlayerId);
+                    const toPlayer = gameState.players.find(p => p.id === q.toPlayerId);
+                    return (
+                      <div key={q.id} className="text-xs border-b border-gray-200 pb-2 pt-1">
+                        <div className="text-gray-600 mb-1">
+                          <span className="font-semibold">{fromPlayer?.name}</span> → <span className="font-semibold">{toPlayer?.name}</span>
+                        </div>
+                        <div className="text-gray-800 font-medium mb-1">Q: {q.question}</div>
+                        {q.answer && (
+                          <div className="text-green-600">A: {q.answer}</div>
+                        )}
+                        {q.isPassed && (
+                          <div className="text-red-500">A: Passed</div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Top Row: Second Component (only in interrogation) */}
+          {!isVotingPhase && canAsk && (
+            <ReadyToVoteBox
+              players={gameState.players}
+              currentPlayerId={gameState.playerId}
+              isCurrentPlayerReady={currentPlayer?.isReadyToVote || false}
+              onReadyClick={handleReadyToVote}
+            />
+          )}
+
+          {/* Bottom Row: Current Votes (only in voting phase) */}
+          {isVotingPhase && (
             <div>
-              <VotingChat
+              <CurrentVotes
                 players={gameState.players}
                 currentPlayerId={gameState.playerId}
-                messages={chatMessages}
-                onSendMessage={handleSendChatMessage}
+                votes={displayVotes}
               />
             </div>
+          )}
           </div>
-        )}
       </div>
 
       {/* Error Display */}
@@ -649,7 +625,13 @@ export default function GamePage() {
           onAnswer={handleAnswerQuestion}
           onPass={handlePassQuestion}
           timeLimit={gameState.settings?.answerTimeLimit || 30}
+          timeRemaining={gameState.pendingQuestionTimeRemaining}
         />
+      )}
+
+      {/* Prepare to Vote Phase */}
+      {gameState.phase === 'prepare-to-vote' && (
+        <PrepareToVote gameState={gameState} />
       )}
 
       {/* Results Phase */}

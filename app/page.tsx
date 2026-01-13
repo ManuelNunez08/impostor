@@ -38,16 +38,16 @@ export default function Home() {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <a
-            href="/lobby"
+            href="/create"
             className="bg-white text-purple-600 font-bold text-xl px-8 py-4 rounded-full hover:bg-opacity-90 transition-all hover:scale-105 shadow-xl"
           >
-            Play Now
+            Create Party
           </a>
           <a
-            href="/rules"
+            href="/join"
             className="bg-white/20 backdrop-blur-sm text-white font-bold text-xl px-8 py-4 rounded-full hover:bg-white/30 transition-all border border-white/30"
           >
-            Full Rules
+            Join Party
           </a>
         </div>
 

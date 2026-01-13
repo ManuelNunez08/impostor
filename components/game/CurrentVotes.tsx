@@ -37,10 +37,10 @@ export default function CurrentVotes({ players, currentPlayerId, votes }: Curren
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4">
-      <h3 className="text-lg font-bold text-gray-800 mb-3">Current Votes</h3>
+    <div className="bg-white rounded-lg shadow-lg p-3">
+      <h3 className="text-sm font-bold text-gray-800 mb-2">Current Votes</h3>
       
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {sortedVotes.map((vote) => {
           const voter = players.find(p => p.id === vote.voterId);
           
@@ -49,24 +49,24 @@ export default function CurrentVotes({ players, currentPlayerId, votes }: Curren
           return (
             <div
               key={vote.voterId}
-              className="flex items-center gap-2 p-2 bg-gray-50 rounded"
+              className="flex items-center gap-1.5 p-1.5 bg-gray-50 rounded"
             >
               {/* Voter */}
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
+                className="w-6 h-6 rounded-full flex items-center justify-center text-sm"
                 style={{ backgroundColor: getPlayerColor(voter.id) }}
               >
                 😊
               </div>
               
               {/* Arrow */}
-              <div className="text-gray-600 text-xl">👉</div>
+              <div className="text-gray-600 text-base">👉</div>
               
               {/* Target or Placeholder */}
               {vote.targetId ? (
                 // Show actual target
                 <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-sm"
                   style={{ backgroundColor: getPlayerColor(vote.targetId) }}
                 >
                   😊
@@ -74,14 +74,14 @@ export default function CurrentVotes({ players, currentPlayerId, votes }: Curren
               ) : (
                 // Show grey placeholder for no vote yet
                 <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-lg bg-gray-300 border-2 border-dashed border-gray-400"
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-sm bg-gray-300 border-2 border-dashed border-gray-400"
                 >
-                  <span className="text-gray-500 text-sm">?</span>
+                  <span className="text-gray-500 text-[10px]">?</span>
                 </div>
               )}
               
               {/* Lock status */}
-              <div className="ml-auto text-lg">
+              <div className="ml-auto text-base">
                 {vote.targetId ? (vote.isLocked ? '🔒' : '🔓') : '⏳'}
               </div>
             </div>
@@ -89,7 +89,7 @@ export default function CurrentVotes({ players, currentPlayerId, votes }: Curren
         })}
       </div>
       
-      <div className="text-xs text-gray-500 mt-3 text-center">
+      <div className="text-[10px] text-gray-500 mt-2 text-center">
         {votes.filter(v => v.isLocked && v.targetId !== null).length} / {players.filter(p => !p.isEliminated).length} locked
       </div>
     </div>

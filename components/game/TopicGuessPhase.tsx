@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlayerView } from '@/types/game';
 
 interface TopicGuessPhaseProps {
@@ -11,9 +11,32 @@ interface TopicGuessPhaseProps {
 export default function TopicGuessPhase({ gameState, onGuess }: TopicGuessPhaseProps) {
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [warningPhase, setWarningPhase] = useState(true);
+  const [warningTimer, setWarningTimer] = useState(3); // 3 second warning phase
   const isImpostor = gameState.isImpostor;
   const topics = gameState.category.topics;
   const timeRemaining = gameState.timeRemaining || 0;
+  const topicGuess = gameState.topicGuess;
+  const winner = gameState.winner;
+
+  // Warning phase countdown
+  useEffect(() => {
+    if (warningPhase && isImpostor) {
+      const timer = setInterval(() => {
+        setWarningTimer((prev) => {
+          if (prev <= 1) {
+            setWarningPhase(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [warningPhase, isImpostor]);
+
+  // Check if guess result should be shown
+  const showResult = winner !== null && topicGuess !== null;
 
   const handleSubmit = () => {
     if (selectedTopic && !hasSubmitted) {
@@ -21,6 +44,63 @@ export default function TopicGuessPhase({ gameState, onGuess }: TopicGuessPhaseP
       onGuess(selectedTopic);
     }
   };
+
+  // Show result if guess has been made
+  if (showResult) {
+    const isCorrect = topicGuess?.isCorrect ?? false;
+    if (isImpostor) {
+      return (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-12 max-w-2xl w-full mx-4 text-center">
+            <h2 className={`text-6xl font-bold mb-6 ${isCorrect ? 'text-red-600' : 'text-gray-700'}`}>
+              {isCorrect ? '🎭 Victory!' : '💀 Defeat'}
+            </h2>
+            <p className="text-2xl text-gray-700 mb-8">
+              {isCorrect 
+                ? "You chose the right topic, you win the game!"
+                : "You chose the wrong topic, players win the game!"
+              }
+            </p>
+          </div>
+        </div>
+      );
+    } else {
+      return (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-12 max-w-2xl w-full mx-4 text-center">
+            <h2 className={`text-6xl font-bold mb-6 ${isCorrect ? 'text-red-600' : 'text-green-600'}`}>
+              {isCorrect ? '😞 Defeat' : '🎉 Victory!'}
+            </h2>
+            <p className="text-2xl text-gray-700 mb-8">
+              {isCorrect
+                ? "The impostor chose the right topic, they win the game!"
+                : "The impostor chose the wrong topic, players win the game!"
+              }
+            </p>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // Warning phase for impostor
+  if (warningPhase && isImpostor) {
+    return (
+      <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl shadow-2xl p-12 max-w-2xl w-full mx-4 text-center">
+          <h2 className="text-5xl font-bold text-gray-700 mb-6">
+            💀 Caught!
+          </h2>
+          <p className="text-2xl text-gray-700 mb-8 whitespace-pre-line">
+            You've been caught, but you have a chance to guess the topic, get ready to guess in {warningTimer} seconds...
+          </p>
+          <div className="text-6xl font-bold text-purple-600">
+            {warningTimer}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isImpostor) {
     // Non-impostors wait

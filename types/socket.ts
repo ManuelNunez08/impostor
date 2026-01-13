@@ -47,6 +47,8 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
   // Lobby events
   'lobby:join': (playerName: string, callback: (response: JoinResponse) => void) => void;
+  'lobby:create': (data: CreateLobbyData, callback: (response: JoinResponse) => void) => void;
+  'lobby:join-by-code': (code: string, playerName?: string, callback?: (response: JoinResponse) => void) => void;
   'lobby:ready': () => void;
   'lobby:leave': () => void;
 
@@ -72,6 +74,7 @@ export interface JoinResponse {
   success: boolean;
   playerId?: PlayerId;
   gameId?: string;
+  playerName?: string;
   error?: string;
 }
 
@@ -94,6 +97,19 @@ export interface AskQuestionData {
 export interface AnswerQuestionData {
   questionId: QuestionId;
   answer: string;
+}
+
+export interface CreateLobbyData {
+  playerName: string;
+  mode: 'text' | 'voice';
+  numPlayers: number;
+  categoryId: string;
+  rounds: Array<{
+    interrogationTime: number;
+    maxQuestionsPerPlayer: number;
+    votingTime: number;
+    impostorCanGuess: boolean;
+  }>;
 }
 
 /**

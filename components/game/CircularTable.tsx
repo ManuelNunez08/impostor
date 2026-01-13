@@ -45,10 +45,15 @@ export default function CircularTable({ players, currentPlayerId, onAskPlayer, c
     });
 
     return (
-        <div className="relative w-full h-[700px]">
+        <div className="absolute inset-0 w-full h-full">
             {/* Center table area - will contain dialogue */}
             <div className="absolute w-[500px] h-[400px] bg-gradient-to-br from-blue-900 to-blue-700 rounded-[50%] shadow-2xl border-8 border-blue-800"
-                style={{ top: '10%', left: '42%', transform: 'translate(-50%, -50%)' }}>
+                style={{ 
+                    top: '50%', 
+                    left: '50%', 
+                    transform: 'translate(-50%, -50%)',
+                    marginTop: '-60px' // Adjust to account for timer space
+                }}>
             </div>
 
             {/* Players positioned in circle */}
@@ -57,18 +62,15 @@ export default function CircularTable({ players, currentPlayerId, onAskPlayer, c
                 const angleInDegrees = angles[index];
                 const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
                 
-                // Use percentage-based positioning relative to container
-                // Radius as percentage of container (adjusted for elliptical table)
-                // Reduced radius to bring players closer to the table
-                const radiusX = 32; // Reduced from 42% to bring closer horizontally
-                const radiusY = 34; // Reduced from 45% to bring closer vertically
+                // Use fixed pixel-based positioning relative to center
+                // Radius in pixels - adjusted for better 4-player layout
+                // Reduce vertical radius to prevent top/bottom players from sticking out too far
+                const radiusX = 280; // Horizontal radius in pixels
+                const radiusY = 240; // Vertical radius in pixels (reduced from 300)
                 
-                // Center point shifted to left (42%) and up significantly to fit on screen
-                const centerX = 42;
-                const centerY = 10;
-                
-                const xPercent = centerX + radiusX * Math.cos(angleInRadians);
-                const yPercent = centerY + radiusY * Math.sin(angleInRadians);
+                // Calculate offset from center in pixels
+                const offsetX = radiusX * Math.cos(angleInRadians);
+                const offsetY = radiusY * Math.sin(angleInRadians);
                 
                 // Use original player index for consistent coloring
                 const originalIndex = players.findIndex(p => p.id === player.id);
@@ -80,9 +82,9 @@ export default function CircularTable({ players, currentPlayerId, onAskPlayer, c
                         key={player.id}
                         className="absolute"
                         style={{
-                            left: `${xPercent}%`,
-                            top: `${yPercent}%`,
-                            transform: 'translate(-50%, -50%)',
+                            left: '50%',
+                            top: '50%',
+                            transform: `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px - 60px))`,
                         }}
                     >
                         {/* Ask button - only show for non-eliminated players */}

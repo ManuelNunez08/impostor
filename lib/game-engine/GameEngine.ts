@@ -17,7 +17,8 @@ import {
   WinnerSide,
   GameSettings,
   RoundConfig,
-  TOPIC_GUESS_TIME
+  TOPIC_GUESS_TIME,
+  ChatMessage
 } from '../../types/game.js';
 import { generateId } from '../utils/id.js';
 import { validateQuestion } from './validation.js';
@@ -51,6 +52,7 @@ export class GameEngine {
       questions: [],
       votes: [],
       topicGuess: null,
+      chatMessages: [],
       winner: null,
       createdAt: Date.now(),
       startedAt: null,
@@ -59,6 +61,9 @@ export class GameEngine {
       lobbyCountdownStarted: null,
       interrogationStartedAt: null,
       interrogationEndsAt: null,
+      prepareToVoteEndsAt: null,
+      votingEndsAt: null,
+      resultsEndsAt: null,
       topicGuessStartedAt: null,
       topicGuessEndsAt: null,
       config: legacyConfig,        // Legacy config
@@ -185,6 +190,45 @@ export class GameEngine {
     }
     
     const remaining = Math.max(0, this.state.topicGuessEndsAt - Date.now());
+    return Math.ceil(remaining / 1000); // Return seconds
+  }
+
+  getPrepareToVoteTimeRemaining(): number | null {
+    if (!this.state.prepareToVoteEndsAt || this.state.phase !== 'prepare-to-vote') {
+      return null;
+    }
+    
+    const remaining = Math.max(0, this.state.prepareToVoteEndsAt - Date.now());
+    return Math.ceil(remaining / 1000); // Return seconds
+  }
+
+  getVotingTimeRemaining(): number | null {
+    if (!this.state.votingEndsAt || this.state.phase !== 'voting') {
+      return null;
+    }
+    
+    const remaining = Math.max(0, this.state.votingEndsAt - Date.now());
+    return Math.ceil(remaining / 1000); // Return seconds
+  }
+
+  getResultsTimeRemaining(): number | null {
+    if (!this.state.resultsEndsAt || this.state.phase !== 'results') {
+      return null;
+    }
+    
+    const remaining = Math.max(0, this.state.resultsEndsAt - Date.now());
+    return Math.ceil(remaining / 1000); // Return seconds
+  }
+
+  getQuestionTimeRemaining(questionId: QuestionId): number | null {
+    const question = this.state.questions.find(q => q.id === questionId);
+    if (!question || question.answer !== null || question.isPassed || question.isTimedOut) {
+      return null; // Question doesn't exist or already answered
+    }
+
+    const answerTimeLimit = (this.state.settings?.answerTimeLimit || 30) * 1000; // Convert to milliseconds
+    const elapsed = Date.now() - question.askedAt;
+    const remaining = Math.max(0, answerTimeLimit - elapsed);
     return Math.ceil(remaining / 1000); // Return seconds
   }
 
@@ -480,9 +524,22 @@ export class GameEngine {
 
   // ============= Phase Transitions =============
 
-  transitionToVoting(): void {
+  transitionToPrepareToVote(): void {
     if (this.state.phase !== 'interrogation') {
-      throw new Error('Can only transition to voting from interrogation phase');
+      throw new Error('Can only transition to prepare-to-vote from interrogation phase');
+    }
+    
+    this.state.phase = 'prepare-to-vote';
+    this.state.currentPhaseStartedAt = Date.now();
+    
+    // Set prepare-to-vote timer (5 seconds)
+    const prepareToVoteDuration = 5 * 1000; // 5 seconds
+    this.state.prepareToVoteEndsAt = Date.now() + prepareToVoteDuration;
+  }
+
+  transitionToVoting(): void {
+    if (this.state.phase !== 'prepare-to-vote') {
+      throw new Error('Can only transition to voting from prepare-to-vote phase');
     }
     
     this.state.phase = 'voting';  // NEW: Generic voting phase
@@ -493,6 +550,12 @@ export class GameEngine {
     });
 
     this.state.currentPhaseStartedAt = Date.now();
+    
+    // Set voting timer end time based on current round config
+    const settings = this.state.settings!;
+    const roundConfig = getCurrentRoundConfig(settings, this.state.currentRoundIndex);
+    const votingTimeMs = (roundConfig.votingTime || 30) * 1000;
+    this.state.votingEndsAt = Date.now() + votingTimeMs;
   }
 
   processVotingResults(): void {
@@ -530,12 +593,21 @@ export class GameEngine {
         this.state.eliminatedPlayers.push(eliminatedId);
       }
 
-      // Always go to results phase first (even for single-round games)
-      // This allows for results display before ending the game
-      this.state.phase = 'results';
+      // Check if this is the last round
+      const isLastRound = !hasNextRound(settings, this.state.currentRoundIndex);
       
-      // Note: For single-round games, the game will end when transitionToNextRound is called
-      // or when manually ended. For multi-round games, transitionToNextRound will move to next round.
+      if (isLastRound) {
+        // Last round and impostor survived - impostor wins immediately
+        this.endGame('impostor', 'Impostor survived all rounds');
+      } else {
+        // Not the last round - go to results phase to transition to next round
+        this.state.phase = 'results';
+        this.state.currentPhaseStartedAt = Date.now();
+        
+        // Set results timer (5 seconds default)
+        const resultsDuration = 5 * 1000; // 5 seconds
+        this.state.resultsEndsAt = Date.now() + resultsDuration;
+      }
     } else {
       // Impostor WAS voted out
       // Eliminate the impostor
@@ -551,16 +623,22 @@ export class GameEngine {
         this.state.topicGuessStartedAt = Date.now();
         this.state.topicGuessEndsAt = Date.now() + topicGuessDuration;
       } else {
-        // Impostor loses - go to results phase first (tests expect this)
-        // In production, this might go directly to ended, but for consistency with tests
-        // and to allow for results display, we go to results phase
+        // Impostor loses - end game immediately but show results phase first
+        // Set winner immediately so ResultsPhase shows correct message
+        this.state.winner = 'players';
+        
+        // Go to results phase to show results before ending
         this.state.phase = 'results';
-        // Note: The game will end when transitionToNextRound is called or manually ended
-        // For single-round games, this allows showing results before ending
+        this.state.currentPhaseStartedAt = Date.now();
+        
+        // Set results timer (5 seconds default)
+        const resultsDuration = 5 * 1000; // 5 seconds
+        this.state.resultsEndsAt = Date.now() + resultsDuration;
+        
+        // Note: The game will transition to 'ended' phase when results timer expires
+        // or when manually continued
       }
     }
-
-    this.state.currentPhaseStartedAt = Date.now();
   }
 
   guessTopicAsImpostor(guess: string): boolean {
@@ -639,6 +717,25 @@ export class GameEngine {
     this.state.phase = 'ended';
     this.state.winner = winner;
     this.state.endedAt = Date.now();
+  }
+
+  // Add chat message during voting phase
+  addChatMessage(playerId: PlayerId, playerName: string, message: string): ChatMessage {
+    if (this.state.phase !== 'voting') {
+      throw new Error('Chat is only available during voting phase');
+    }
+
+    const chatMessage: ChatMessage = {
+      id: `${Date.now()}-${playerId}`,
+      playerId,
+      playerName,
+      message,
+      timestamp: Date.now(),
+      round: this.state.currentRound,
+    };
+
+    this.state.chatMessages.push(chatMessage);
+    return chatMessage;
   }
 
   // ============= State Access =============

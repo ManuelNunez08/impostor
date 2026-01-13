@@ -7,9 +7,10 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { ServerToClientEvents, ClientToServerEvents } from '../types/socket.js';
 import { GameEngine } from '../lib/game-engine/GameEngine.js';
-import { getRandomCategory } from '../lib/game-engine/categories.js';
+import { getRandomCategory, getCategoryById } from '../lib/game-engine/categories.js';
 import { validatePlayerName, validateAnswer } from '../lib/game-engine/validation.js';
-import { PlayerId } from '../types/game.js';
+import { PlayerId, GameSettings, RoundConfig } from '../types/game.js';
+import { CreateLobbyData } from '../types/socket.js';
 
 const PORT = process.env.PORT || 3001;
 
@@ -32,6 +33,9 @@ let waitingLobby: { game: GameEngine; gameId: string } | null = null;
 // Countdown timers
 const countdownTimers = new Map<string, NodeJS.Timeout>();
 const interrogationTimers = new Map<string, NodeJS.Timeout>();
+const prepareToVoteTimers = new Map<string, NodeJS.Timeout>();
+const votingTimers = new Map<string, NodeJS.Timeout>();
+const resultsTimers = new Map<string, NodeJS.Timeout>();
 const topicGuessTimers = new Map<string, NodeJS.Timeout>();
 const questionTimers = new Map<string, NodeJS.Timeout>(); // questionId -> timeout
 
@@ -52,7 +56,7 @@ io.on('connection', (socket) => {
       let gameId: string;
 
       // Check if there's a waiting lobby with space
-      if (waitingLobby && Object.keys(waitingLobby.game.getState().players).length < 6) {
+      if (waitingLobby && Object.keys(waitingLobby.game.getState().players).length < 7) {
         game = waitingLobby.game;
         gameId = waitingLobby.gameId;
         console.log(`Player joining existing lobby: ${gameId}`);
@@ -88,14 +92,164 @@ io.on('connection', (socket) => {
 
       broadcastGameState(gameId);
 
-      // If lobby is full (6 players), clear waiting lobby so next player creates new one
-      if (playerCount >= 6) {
+      // If lobby is full (7 players), clear waiting lobby so next player creates new one
+      if (playerCount >= 7) {
         console.log(`Lobby ${gameId} is full, clearing waiting lobby`);
         waitingLobby = null;
       }
     } catch (error) {
       console.error('Error in lobby:join:', error);
       callback({ success: false, error: String(error) });
+    }
+  });
+
+  socket.on('lobby:create', (data: CreateLobbyData, callback) => {
+    const validation = validatePlayerName(data.playerName);
+    if (!validation.valid) {
+      callback({ success: false, error: validation.error });
+      return;
+    }
+
+    try {
+      // Validate inputs
+      if (data.numPlayers < 4 || data.numPlayers > 7) {
+        callback({ success: false, error: 'Number of players must be between 4 and 7' });
+        return;
+      }
+
+      if (data.rounds.length < 2 || data.rounds.length > 5) {
+        callback({ success: false, error: 'Must have between 2 and 5 rounds' });
+        return;
+      }
+
+      // Get category
+      const category = getCategoryById(data.categoryId);
+      if (!category) {
+        callback({ success: false, error: 'Invalid category' });
+        return;
+      }
+
+      // Build GameSettings
+      const settings: GameSettings = {
+        mode: data.mode,
+        minPlayers: data.numPlayers,
+        maxPlayers: data.numPlayers,
+        rounds: data.rounds.map((r, index): RoundConfig => ({
+          roundNumber: index + 1,
+          interrogationTime: r.interrogationTime,
+          maxQuestionsPerPlayer: r.maxQuestionsPerPlayer,
+          votingTime: r.votingTime,
+          impostorCanGuess: r.impostorCanGuess,
+        })),
+        lobbyCountdownDuration: 30,
+        maxQuestionLength: 15,
+        answerTimeLimit: 30,
+      };
+
+      // Create game
+      const game = new GameEngine(category, settings);
+      const gameId = game.getState().id;
+      games.set(gameId, game);
+
+      // Add creator as player
+      const playerId = game.addPlayer(data.playerName, socket.id);
+      playerToGame.set(socket.id, gameId);
+      playerIdMap.set(socket.id, playerId);
+      socket.join(gameId);
+
+      console.log(`Created new lobby ${gameId} with custom settings by player ${playerId}`);
+
+      callback({ success: true, playerId, gameId, playerName: data.playerName });
+
+      // Notify all players (just the creator for now)
+      io.to(gameId).emit('game:player-joined', playerId, data.playerName);
+
+      // Start countdown if minimum players reached (won't happen with just creator)
+      if (game.shouldStartCountdown()) {
+        game.startLobbyCountdown();
+        startCountdownTimer(gameId);
+      }
+
+      broadcastGameState(gameId);
+    } catch (error) {
+      console.error('Error in lobby:create:', error);
+      callback({ success: false, error: String(error) });
+    }
+  });
+
+  socket.on('lobby:join-by-code', (code: string, playerName?: string, callback?: (response: any) => void) => {
+    // Find game by code (last 4 characters of gameId)
+    let targetGame: GameEngine | null = null;
+    let targetGameId: string | null = null;
+
+    for (const [gameId, game] of games.entries()) {
+      const gameCode = gameId.substring(gameId.length - 4).toUpperCase();
+      if (gameCode === code.toUpperCase()) {
+        targetGame = game;
+        targetGameId = gameId;
+        break;
+      }
+    }
+
+    if (!targetGame || !targetGameId) {
+      if (callback) callback({ success: false, error: 'Party code not found' });
+      return;
+    }
+
+    const state = targetGame.getState();
+    const currentPlayerCount = Object.keys(state.players).length;
+
+    // Check if game is full
+    if (currentPlayerCount >= state.settings!.maxPlayers) {
+      if (callback) callback({ success: false, error: 'This party is full' });
+      return;
+    }
+
+    // Generate player name if not provided
+    let finalPlayerName = playerName?.trim();
+    if (!finalPlayerName) {
+      let playerIndex = 1;
+      while (Object.values(state.players).some(p => p.name === `player_${playerIndex}`)) {
+        playerIndex++;
+      }
+      finalPlayerName = `player_${playerIndex}`;
+    }
+
+    const validation = validatePlayerName(finalPlayerName);
+    if (!validation.valid) {
+      if (callback) callback({ success: false, error: validation.error });
+      return;
+    }
+
+    try {
+      const playerId = targetGame.addPlayer(finalPlayerName, socket.id);
+      playerToGame.set(socket.id, targetGameId);
+      playerIdMap.set(socket.id, playerId);
+      socket.join(targetGameId);
+
+      console.log(`Player ${playerId} joined party ${targetGameId} by code ${code}`);
+
+      if (callback) {
+        callback({ success: true, playerId, gameId: targetGameId, playerName: finalPlayerName });
+      }
+
+      // Notify all players
+      io.to(targetGameId).emit('game:player-joined', playerId, finalPlayerName);
+
+      const playerCount = Object.keys(targetGame.getState().players).length;
+      console.log(`Party ${targetGameId} now has ${playerCount} players`);
+
+      // Start countdown if minimum players reached
+      if (targetGame.shouldStartCountdown()) {
+        targetGame.startLobbyCountdown();
+        console.log(`Starting countdown for party ${targetGameId} (${playerCount} players)`);
+        startCountdownTimer(targetGameId);
+      }
+
+      broadcastGameState(targetGameId);
+    } catch (error) {
+      console.error('Error in lobby:join-by-code:', error);
+      if (callback) callback({ success: false, error: String(error) });
     }
   });
 
@@ -352,8 +506,9 @@ io.on('connection', (socket) => {
           }
         });
         game.timeoutAllPendingQuestions();
-        game.transitionToVoting();
+        game.transitionToPrepareToVote();
         io.to(gameId).emit('game:phase-change', game.getPhase());
+        startPrepareToVoteTimer(gameId); // Start prepare-to-vote timer
         broadcastGameState(gameId);
       }
 
@@ -392,6 +547,7 @@ io.on('connection', (socket) => {
       const majorityLocked = game.hasMajorityLockedVotes();
       
       if (allVoted || majorityLocked) {
+        cancelVotingTimer(gameId); // Cancel timer since voting completed early
         game.processVotingResults();
         io.to(gameId).emit('game:voting-complete');
         io.to(gameId).emit('game:phase-change', game.getPhase());
@@ -399,9 +555,17 @@ io.on('connection', (socket) => {
         // Log the voting result
         console.log(`Voting complete in ${gameId}. Phase: ${game.getPhase()}`);
         
-        // Start topic guess timer if entering topic-guess phase
-        if (game.getPhase() === 'topic-guess') {
+        // Handle different phases after voting
+        if (game.getPhase() === 'ended') {
+          // Game ended immediately (e.g., impostor won on last round)
+          const finalState = game.getState();
+          io.to(gameId).emit('game:ended', finalState.winner, 'Game completed');
+        } else if (game.getPhase() === 'topic-guess') {
+          // Start topic guess timer if entering topic-guess phase
           startTopicGuessTimer(gameId);
+        } else if (game.getPhase() === 'results') {
+          // Start results timer if entering results phase
+          startResultsTimer(gameId);
         }
       }
 
@@ -424,16 +588,18 @@ io.on('connection', (socket) => {
     const player = game.getPlayer(playerId);
     if (!player) return;
 
+    try {
+      // Store chat message in game state
+      const chatMessage = game.addChatMessage(playerId, player.name, message);
+      
     // Broadcast chat message to all players in the game
-    const chatMessage = {
-      id: `${Date.now()}-${playerId}`,
-      playerId,
-      playerName: player.name,
-      message,
-      timestamp: Date.now()
-    };
-
     io.to(gameId).emit('game:voting-chat', chatMessage);
+      
+      // Broadcast updated game state so all clients get the full chat history
+      broadcastGameState(gameId);
+    } catch (error) {
+      console.error('Error adding chat message:', error);
+    }
   });
 
   socket.on('game:guess-topic', (guess, callback) => {
@@ -470,10 +636,42 @@ io.on('connection', (socket) => {
     if (!game) return;
 
     try {
+      cancelResultsTimer(gameId); // Cancel results timer since manually continuing
+      const state = game.getState();
+      
+      // If winner is already set (e.g., impostor caught and can't guess), end the game
+      if (state.winner !== null) {
+        game.endGame(state.winner, 'Game completed');
+        console.log(`Manually continuing in ${gameId}, ending game (winner already determined)`);
+        io.to(gameId).emit('game:phase-change', game.getPhase());
+        const finalState = game.getState();
+        io.to(gameId).emit('game:ended', finalState.winner, 'Game completed');
+      } else {
+        // No winner yet - check if there's a next round
+        const settings = state.settings!;
+        const hasNext = state.currentRoundIndex < settings.rounds.length - 1;
+        
+        if (hasNext) {
       game.transitionToNextRound();
       console.log(`Transitioning to next round in ${gameId}`);
       io.to(gameId).emit('game:phase-change', game.getPhase());
       startInterrogationTimer(gameId); // Start timer for new round
+        } else {
+          // No more rounds - determine winner and end game
+          const activePlayers = game.getActivePlayers();
+          const impostorStillAlive = activePlayers.some(p => p.id === state.impostorId);
+          
+          if (impostorStillAlive) {
+            game.endGame('impostor', 'Impostor survived all rounds');
+          } else {
+            game.endGame('players', 'Impostor was eliminated');
+          }
+          console.log(`No more rounds in ${gameId}, ending game`);
+          io.to(gameId).emit('game:phase-change', game.getPhase());
+          const finalState = game.getState();
+          io.to(gameId).emit('game:ended', finalState.winner, 'Game completed');
+        }
+      }
       broadcastGameState(gameId);
     } catch (error) {
       console.error('Error transitioning to next round:', error);
@@ -563,6 +761,14 @@ function getPlayerView(game: GameEngine, playerId: PlayerId) {
   // Calculate currentRound as 1-based display number
   const currentRound = state.currentRoundIndex + 1;
   
+  // Find pending question for this player and get its remaining time
+  const pendingQuestion = state.questions.find(
+    q => q.toPlayerId === playerId && q.answer === null && !q.isPassed && !q.isTimedOut
+  );
+  const pendingQuestionTimeRemaining = pendingQuestion 
+    ? game.getQuestionTimeRemaining(pendingQuestion.id)
+    : null;
+  
   return {
     gameId: state.id,
     playerId,
@@ -575,11 +781,14 @@ function getPlayerView(game: GameEngine, playerId: PlayerId) {
     players: Object.values(state.players),
     questions: state.questions,
     votes: state.votes,
+    chatMessages: state.chatMessages, // Include chat history
+    topicGuess: state.topicGuess, // Include topic guess result
     canAskQuestion: game.canPlayerAskQuestion(playerId).can,
     canVote: game.canPlayerVote(playerId).can,
     eliminatedPlayers: state.eliminatedPlayers,
     winner: state.winner,
-    timeRemaining: game.getInterrogationTimeRemaining() || game.getTopicGuessTimeRemaining(),
+    timeRemaining: game.getInterrogationTimeRemaining() || game.getPrepareToVoteTimeRemaining() || game.getVotingTimeRemaining() || game.getResultsTimeRemaining() || game.getTopicGuessTimeRemaining(),
+    pendingQuestionTimeRemaining, // Remaining time for pending question (if any)
     lobbyCountdown: game.getLobbyCountdownRemaining(),
     config: state.settings, // Legacy field now points to settings
     settings: state.settings,
@@ -621,7 +830,8 @@ function startCountdownTimer(gameId: string) {
         console.error('Error starting game after countdown:', error);
       }
     } else {
-      // Broadcast updated countdown
+      // Broadcast timer update
+      io.to(gameId).emit('game:timer-update', remaining);
       broadcastGameState(gameId);
     }
   }, 1000); // Update every second
@@ -670,16 +880,18 @@ function startInterrogationTimer(gameId: string) {
         });
         // Timeout any pending questions
         game.timeoutAllPendingQuestions();
-        // Transition to voting
-        game.transitionToVoting();
-        console.log(`Interrogation time expired for ${gameId}, forcing voting phase`);
+        // Transition to prepare-to-vote phase
+        game.transitionToPrepareToVote();
+        console.log(`Interrogation time expired for ${gameId}, transitioning to prepare-to-vote phase`);
         io.to(gameId).emit('game:phase-change', game.getPhase());
+        startPrepareToVoteTimer(gameId); // Start prepare-to-vote timer
         broadcastGameState(gameId);
       } catch (error) {
         console.error('Error transitioning to voting after timer:', error);
       }
     } else {
-      // Broadcast updated time remaining
+      // Broadcast timer update
+      io.to(gameId).emit('game:timer-update', remaining);
       broadcastGameState(gameId);
     }
   }, 1000); // Update every second
@@ -692,6 +904,200 @@ function cancelInterrogationTimer(gameId: string) {
     clearInterval(interrogationTimers.get(gameId)!);
     interrogationTimers.delete(gameId);
     console.log(`Cancelled interrogation timer for ${gameId}`);
+  }
+}
+
+function startPrepareToVoteTimer(gameId: string) {
+  // Clear existing timer if any
+  if (prepareToVoteTimers.has(gameId)) {
+    clearInterval(prepareToVoteTimers.get(gameId)!);
+  }
+
+  const timer = setInterval(() => {
+    const game = games.get(gameId);
+    if (!game) {
+      clearInterval(timer);
+      prepareToVoteTimers.delete(gameId);
+      return;
+    }
+
+    const remaining = game.getPrepareToVoteTimeRemaining();
+
+    if (remaining === null || remaining <= 0) {
+      // Prepare-to-vote time expired - transition to voting
+      clearInterval(timer);
+      prepareToVoteTimers.delete(gameId);
+
+      try {
+        // Only transition if still in prepare-to-vote phase
+        if (game.getPhase() === 'prepare-to-vote') {
+          game.transitionToVoting();
+          console.log(`Prepare-to-vote time expired for ${gameId}, transitioning to voting phase`);
+          io.to(gameId).emit('game:phase-change', game.getPhase());
+          startVotingTimer(gameId); // Start voting timer
+          broadcastGameState(gameId);
+        }
+      } catch (error) {
+        console.error('Error transitioning to voting after prepare-to-vote timer:', error);
+      }
+    } else {
+      // Broadcast timer update
+      io.to(gameId).emit('game:timer-update', remaining);
+      broadcastGameState(gameId);
+    }
+  }, 1000); // Update every second
+
+  prepareToVoteTimers.set(gameId, timer);
+}
+
+function cancelPrepareToVoteTimer(gameId: string) {
+  if (prepareToVoteTimers.has(gameId)) {
+    clearInterval(prepareToVoteTimers.get(gameId)!);
+    prepareToVoteTimers.delete(gameId);
+    console.log(`Cancelled prepare-to-vote timer for ${gameId}`);
+  }
+}
+
+function startVotingTimer(gameId: string) {
+  // Clear existing timer if any
+  if (votingTimers.has(gameId)) {
+    clearInterval(votingTimers.get(gameId)!);
+  }
+
+  const timer = setInterval(() => {
+    const game = games.get(gameId);
+    if (!game) {
+      clearInterval(timer);
+      votingTimers.delete(gameId);
+      return;
+    }
+
+    const remaining = game.getVotingTimeRemaining();
+    
+    if (remaining === null || remaining <= 0) {
+      // Voting time expired - process results if not already done
+      clearInterval(timer);
+      votingTimers.delete(gameId);
+      
+      try {
+        // Only process if still in voting phase (might have been processed by votes)
+        if (game.getPhase() === 'voting') {
+          game.processVotingResults();
+          console.log(`Voting time expired for ${gameId}, processing results`);
+          io.to(gameId).emit('game:voting-complete');
+          io.to(gameId).emit('game:phase-change', game.getPhase());
+          
+          // Handle different phases after voting
+          if (game.getPhase() === 'ended') {
+            // Game ended immediately (e.g., impostor won on last round)
+            const finalState = game.getState();
+            io.to(gameId).emit('game:ended', finalState.winner, 'Game completed');
+          } else if (game.getPhase() === 'topic-guess') {
+            // Start topic guess timer if entering topic-guess phase
+            startTopicGuessTimer(gameId);
+          } else if (game.getPhase() === 'results') {
+            // Start results timer if entering results phase
+            startResultsTimer(gameId);
+          }
+        }
+        broadcastGameState(gameId);
+      } catch (error) {
+        console.error('Error processing voting results after timer:', error);
+      }
+    } else {
+      // Broadcast timer update
+      io.to(gameId).emit('game:timer-update', remaining);
+      broadcastGameState(gameId);
+    }
+  }, 1000); // Update every second
+
+  votingTimers.set(gameId, timer);
+}
+
+function cancelVotingTimer(gameId: string) {
+  if (votingTimers.has(gameId)) {
+    clearInterval(votingTimers.get(gameId)!);
+    votingTimers.delete(gameId);
+    console.log(`Cancelled voting timer for ${gameId}`);
+  }
+}
+
+function startResultsTimer(gameId: string) {
+  // Clear existing timer if any
+  if (resultsTimers.has(gameId)) {
+    clearInterval(resultsTimers.get(gameId)!);
+  }
+
+  const timer = setInterval(() => {
+    const game = games.get(gameId);
+    if (!game) {
+      clearInterval(timer);
+      resultsTimers.delete(gameId);
+      return;
+    }
+
+    const remaining = game.getResultsTimeRemaining();
+    
+    if (remaining === null || remaining <= 0) {
+      // Results time expired - transition to next round or end game
+      clearInterval(timer);
+      resultsTimers.delete(gameId);
+      
+      try {
+        const state = game.getState();
+        
+        // If winner is already set (e.g., impostor caught and can't guess), end the game
+        if (state.winner !== null) {
+          game.endGame(state.winner, 'Game completed');
+          console.log(`Results time expired for ${gameId}, ending game (winner already determined)`);
+          io.to(gameId).emit('game:phase-change', game.getPhase());
+          const finalState = game.getState();
+          io.to(gameId).emit('game:ended', finalState.winner, 'Game completed');
+        } else {
+          // No winner yet - check if there's a next round
+          const settings = state.settings!;
+          const hasNext = state.currentRoundIndex < settings.rounds.length - 1;
+          
+          if (hasNext) {
+            game.transitionToNextRound();
+            console.log(`Results time expired for ${gameId}, transitioning to next round`);
+            io.to(gameId).emit('game:phase-change', game.getPhase());
+            startInterrogationTimer(gameId); // Start interrogation timer for new round
+          } else {
+            // No more rounds - determine winner and end game
+            const activePlayers = game.getActivePlayers();
+            const impostorStillAlive = activePlayers.some(p => p.id === state.impostorId);
+            
+            if (impostorStillAlive) {
+              game.endGame('impostor', 'Impostor survived all rounds');
+            } else {
+              game.endGame('players', 'Impostor was eliminated');
+            }
+            console.log(`Results time expired for ${gameId}, no more rounds - ending game`);
+            io.to(gameId).emit('game:phase-change', game.getPhase());
+            const finalState = game.getState();
+            io.to(gameId).emit('game:ended', finalState.winner, 'Game completed');
+          }
+        }
+        broadcastGameState(gameId);
+      } catch (error) {
+        console.error('Error transitioning after results timer:', error);
+      }
+    } else {
+      // Broadcast timer update
+      io.to(gameId).emit('game:timer-update', remaining);
+      broadcastGameState(gameId);
+    }
+  }, 1000); // Update every second
+
+  resultsTimers.set(gameId, timer);
+}
+
+function cancelResultsTimer(gameId: string) {
+  if (resultsTimers.has(gameId)) {
+    clearInterval(resultsTimers.get(gameId)!);
+    resultsTimers.delete(gameId);
+    console.log(`Cancelled results timer for ${gameId}`);
   }
 }
 
@@ -725,7 +1131,8 @@ function startTopicGuessTimer(gameId: string) {
         console.error('Error handling topic guess timeout:', error);
       }
     } else {
-      // Broadcast updated time remaining
+      // Broadcast timer update
+      io.to(gameId).emit('game:timer-update', remaining);
       broadcastGameState(gameId);
     }
   }, 1000); // Update every second

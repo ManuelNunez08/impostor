@@ -9,18 +9,31 @@ interface AnswerPanelProps {
     onAnswer: (answer: string) => void;
     onPass: () => void;
     timeLimit: number; // seconds
+    timeRemaining?: number | null; // Server-synced remaining time (optional, falls back to local countdown)
 }
 
-export default function AnswerPanel({ question, fromPlayer, onAnswer, onPass, timeLimit }: AnswerPanelProps) {
+export default function AnswerPanel({ question, fromPlayer, onAnswer, onPass, timeLimit, timeRemaining: serverTimeRemaining }: AnswerPanelProps) {
     const [answer, setAnswer] = useState('');
-    const [timeRemaining, setTimeRemaining] = useState(timeLimit);
+    const [localTimeRemaining, setLocalTimeRemaining] = useState(timeLimit);
+
+    // Use server time if available, otherwise use local countdown
+    const timeRemaining = serverTimeRemaining !== null && serverTimeRemaining !== undefined 
+        ? serverTimeRemaining 
+        : localTimeRemaining;
 
     useEffect(() => {
         if (!question) return;
 
-        setTimeRemaining(timeLimit);
+        // If server time is provided, use it and don't run local countdown
+        if (serverTimeRemaining !== null && serverTimeRemaining !== undefined) {
+            setLocalTimeRemaining(serverTimeRemaining);
+            return;
+        }
+
+        // Otherwise, use local countdown
+        setLocalTimeRemaining(timeLimit);
         const interval = setInterval(() => {
-            setTimeRemaining((prev) => {
+            setLocalTimeRemaining((prev) => {
                 if (prev <= 1) {
                     clearInterval(interval);
                     // Auto-timeout handled by server
@@ -31,7 +44,7 @@ export default function AnswerPanel({ question, fromPlayer, onAnswer, onPass, ti
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [question, timeLimit]);
+    }, [question, timeLimit, serverTimeRemaining]);
 
     const handleSubmit = () => {
         if (answer.trim()) {

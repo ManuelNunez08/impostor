@@ -17,7 +17,10 @@ export interface RoundConfig {
   impostorCanGuess: boolean;      // if voted out, can impostor guess topic to win?
 }
 
+export type GameMode = 'text' | 'voice';
+
 export interface GameSettings {
+  mode: GameMode;                 // 'text' or 'voice'
   minPlayers: number;
   maxPlayers: number;
   rounds: RoundConfig[];          // Array of round configurations
@@ -33,6 +36,7 @@ export type GamePhase =
   | 'lobby'           // Waiting for players
   | 'starting'        // Game is starting, roles being assigned
   | 'interrogation'   // Questioning phase (generic for any round)
+  | 'prepare-to-vote' // Countdown before voting phase
   | 'voting'          // Voting phase (generic for any round)
   | 'topic-guess'     // Impostor guessing topic
   | 'results'         // Show round results
@@ -97,6 +101,15 @@ export interface TopicGuess {
   timestamp: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  playerId: PlayerId;
+  playerName: string;
+  message: string;
+  timestamp: number;
+  round: number; // Round number when message was sent
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -107,7 +120,7 @@ export interface Category {
 // ============= Legacy Config (kept for backward compatibility) =============
 
 export interface GameConfig {
-  maxPlayers: number;           // 4-6 players
+  maxPlayers: number;           // 4-7 players
   minPlayers: number;           // 4 players minimum
   maxQuestionLength: number;    // 15 words
   round1QuestionsPerPlayer: number; // 2 questions
@@ -136,6 +149,7 @@ export interface GameState {
   questions: Question[];
   votes: Vote[];
   topicGuess: TopicGuess | null;
+  chatMessages: ChatMessage[]; // Voting phase chat messages
   
   // Winner info
   winner: WinnerSide;
@@ -145,6 +159,9 @@ export interface GameState {
   startedAt: number | null;
   interrogationStartedAt: number | null;  // When current interrogation phase started
   interrogationEndsAt: number | null;     // When current interrogation phase should end
+  prepareToVoteEndsAt: number | null;     // When prepare-to-vote phase should end
+  votingEndsAt: number | null;            // When current voting phase should end
+  resultsEndsAt: number | null;          // When current results phase should end
   topicGuessStartedAt: number | null;     // When topic guess phase started
   topicGuessEndsAt: number | null;        // When topic guess phase should end
   endedAt: number | null;
@@ -168,11 +185,14 @@ export interface PlayerView {
   players: Player[];
   questions: Question[];
   votes: Vote[];
+  chatMessages: ChatMessage[]; // Voting phase chat history
+  topicGuess: TopicGuess | null; // Topic guess result (if any)
   canAskQuestion: boolean;
   canVote: boolean;
   eliminatedPlayers: PlayerId[];
   winner: WinnerSide;
   timeRemaining: number | null;
+  pendingQuestionTimeRemaining: number | null; // Remaining time for pending question (if any)
   lobbyCountdown: number | null;
   config: GameConfig;                // Legacy config
   settings?: GameSettings;           // NEW: Flexible settings (optional during migration)
@@ -181,7 +201,7 @@ export interface PlayerView {
 // ============= Default Configurations =============
 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
-  maxPlayers: 6,
+  maxPlayers: 7,
   minPlayers: 4,
   maxQuestionLength: 15,
   round1QuestionsPerPlayer: 2,
@@ -200,8 +220,9 @@ export const RESULTS_DISPLAY_TIME = 5; // seconds
 // ============= Default Settings =============
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  mode: 'text',
   minPlayers: 4,
-  maxPlayers: 6,
+  maxPlayers: 7,
   rounds: [
     {
       roundNumber: 1,

@@ -46,7 +46,12 @@ export default function CenterDialogue({ questions, players }: CenterDialoguePro
         <div
             ref={scrollRef}
             className="absolute w-[340px] h-[240px] overflow-y-auto bg-white/95 backdrop-blur rounded-lg shadow-inner p-3 space-y-2"
-            style={{ top: '10%', left: '42%', transform: 'translate(-50%, -50%)' }}
+            style={{ 
+                top: '50%', 
+                left: '50%', 
+                transform: 'translate(-50%, -50%)',
+                marginTop: '-60px' // Match table offset
+            }}
         >
             {/* Answered Questions */}
             {answeredQuestions.map((q) => (

@@ -54,27 +54,31 @@ export default function VotingTable({
   });
 
   return (
-    <div className="relative w-full h-[700px]">
-      {/* Center table area - smaller for voting */}
+    <div className="absolute inset-0 w-full h-full">
+      {/* Center table area - same size as CircularTable */}
       <div 
-        className="absolute w-[320px] h-[256px] bg-gradient-to-br from-blue-900 to-blue-700 rounded-[50%] shadow-2xl border-8 border-blue-800"
-        style={{ top: '0%', left: '35%', transform: 'translate(-50%, -50%)' }}
+        className="absolute w-[500px] h-[400px] bg-gradient-to-br from-blue-900 to-blue-700 rounded-[50%] shadow-2xl border-8 border-blue-800"
+        style={{ 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)',
+          marginTop: '-60px' // Adjust to account for timer space
+        }}
       >
       </div>
 
-      {/* Players positioned in circle */}
+      {/* Players positioned in circle - same positions as CircularTable */}
       {reorderedPlayers.map((player, index) => {
         const angleInDegrees = angles[index];
         const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
         
-        const radiusX = 28;
-        const radiusY = 30;
+        // Use same positioning as CircularTable - fixed pixel-based
+        const radiusX = 280; // Horizontal radius in pixels
+        const radiusY = 240; // Vertical radius in pixels (reduced from 300)
         
-        const centerX = 35;
-        const centerY = 0;
-        
-        const xPercent = centerX + radiusX * Math.cos(angleInRadians);
-        const yPercent = centerY + radiusY * Math.sin(angleInRadians);
+        // Calculate offset from center in pixels
+        const offsetX = radiusX * Math.cos(angleInRadians);
+        const offsetY = radiusY * Math.sin(angleInRadians);
         
         const originalIndex = players.findIndex(p => p.id === player.id);
         const color = PLAYER_COLORS[originalIndex % PLAYER_COLORS.length];
@@ -87,9 +91,9 @@ export default function VotingTable({
             key={player.id}
             className="absolute"
             style={{
-              left: `${xPercent}%`,
-              top: `${yPercent}%`,
-              transform: 'translate(-50%, -50%)',
+              left: '50%',
+              top: '50%',
+              transform: `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px - 60px))`,
             }}
           >
             {/* Voting buttons/status above avatar */}

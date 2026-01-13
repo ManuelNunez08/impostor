@@ -1,6 +1,7 @@
 'use client';
 
 import { Category } from '@/types/game';
+import TopicDropdown from '@/components/shared/TopicDropdown';
 
 interface LobbySettingsProps {
   category: Category;
@@ -35,19 +36,10 @@ export default function LobbySettings({ category, minPlayers, maxPlayers }: Lobb
           </div>
         </div>
 
-        {/* Possible Topics (collapsible) */}
-        <details className="text-sm">
-          <summary className="cursor-pointer text-gray-600 hover:text-gray-800 font-medium">
-            Possible Topics ▼
-          </summary>
-          <div className="mt-2 max-h-40 overflow-y-auto">
-            <div className="grid grid-cols-2 gap-1 text-xs text-gray-700">
-              {category.topics.map((topic, index) => (
-                <div key={index} className="py-1">• {topic}</div>
-              ))}
-            </div>
+        {/* Possible Topics (dropdown) */}
+        <div className="text-sm">
+          <TopicDropdown category={category} />
           </div>
-        </details>
       </div>
     </div>
   );
